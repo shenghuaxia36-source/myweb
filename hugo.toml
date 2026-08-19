@@ -1,4 +1,27 @@
-baseURL = 'https://example.org/'
-locale = 'en-us'
-title = 'My New Hugo Project'
-theme = 'ananke'
+baseURL = "https://shenghuaxia36-source.github.io/myweb/"
+languageCode = "en-us"
+title = "Life Gourney"
+
+theme = "ananke"
+
+[menus]
+
+  [[menus.main]]
+    name = "Technology"
+    pageRef = "/technology"
+    weight = 10
+
+  [[menus.main]]
+    name = "AI"
+    pageRef = "/ai"
+    weight = 20
+
+  [[menus.main]]
+    name = "Life"
+    pageRef = "/life"
+    weight = 30
+
+  [[menus.main]]
+    name = "About"
+    pageRef = "/about"
+    weight = 40

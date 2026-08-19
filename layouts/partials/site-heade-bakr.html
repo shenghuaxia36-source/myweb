@@ -1,0 +1,80 @@
+<header class="sx-header">
+  <div class="sx-header__inner">
+
+    <!-- Site Identity -->
+    <div class="sx-brand">
+      <a href="{{ "/" | relURL }}" class="sx-brand__link">
+        {{ .Site.Title }}
+      </a>
+    </div>
+
+
+    <!-- Desktop Navigation -->
+    <nav class="sx-nav" aria-label="Main navigation">
+
+      <ul class="sx-nav__list">
+
+        {{ range site.Menus.main }}
+
+          <li class="sx-nav__item">
+
+            <a
+              href="{{ .URL | relURL }}"
+              class="sx-nav__link{{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }} is-active{{ end }}"
+            >
+              {{ .Name }}
+            </a>
+
+          </li>
+
+        {{ end }}
+
+      </ul>
+
+    </nav>
+
+
+    <!-- Mobile Menu Button -->
+    <button
+      class="sx-menu-toggle"
+      type="button"
+      aria-label="Toggle navigation"
+      aria-expanded="false"
+      aria-controls="sx-mobile-nav"
+    >
+      <span></span>
+      <span></span>
+    </button>
+
+  </div>
+
+
+  <!-- Mobile Navigation -->
+  <nav
+    id="sx-mobile-nav"
+    class="sx-mobile-nav"
+    aria-label="Mobile navigation"
+  >
+
+    <ul class="sx-mobile-nav__list">
+
+      {{ range site.Menus.main }}
+
+        <li class="sx-mobile-nav__item">
+
+          <a
+            href="{{ .URL | relURL }}"
+            class="sx-mobile-nav__link{{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }} is-active{{ end }}"
+          >
+            {{ .Name }}
+          </a>
+
+        </li>
+
+      {{ end }}
+
+    </ul>
+
+  </nav>
+
+</header>

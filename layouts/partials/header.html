@@ -1,0 +1,67 @@
+<header class="site-header">
+  <div class="site-header__inner">
+
+    <!-- Logo / Site Identity -->
+    <div class="site-brand">
+      <a href="{{ "/" | relURL }}" class="site-brand__link">
+        <span class="site-brand__name">
+          {{ .Site.Title }}
+        </span>
+      </a>
+    </div>
+
+    <!-- Desktop Navigation -->
+    <nav class="site-nav" aria-label="Main navigation">
+      <ul class="site-nav__list">
+
+        {{ range .Site.Menus.main }}
+          <li class="site-nav__item">
+            <a
+              href="{{ .URL | relURL }}"
+              class="site-nav__link{{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }} is-active{{ end }}"
+            >
+              {{ .Name }}
+            </a>
+          </li>
+        {{ end }}
+
+      </ul>
+    </nav>
+
+    <!-- Mobile Menu Button -->
+    <button
+      class="site-menu-toggle"
+      type="button"
+      aria-label="Open navigation"
+      aria-expanded="false"
+      aria-controls="mobile-navigation"
+    >
+      <span></span>
+      <span></span>
+    </button>
+
+  </div>
+
+  <!-- Mobile Navigation -->
+  <nav
+    id="mobile-navigation"
+    class="mobile-nav"
+    aria-label="Mobile navigation"
+  >
+    <ul class="mobile-nav__list">
+
+      {{ range .Site.Menus.main }}
+        <li class="mobile-nav__item">
+          <a
+            href="{{ .URL | relURL }}"
+            class="mobile-nav__link{{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }} is-active{{ end }}"
+          >
+            {{ .Name }}
+          </a>
+        </li>
+      {{ end }}
+
+    </ul>
+  </nav>
+
+</header>
