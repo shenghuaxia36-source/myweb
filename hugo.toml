@@ -4,6 +4,13 @@ title = "Gourney Of oG-Go"
 
 theme = "ananke"
 
+[params]
+  # 修复了这里的全角中文双引号 “ 变成半角 "
+  mainSections = []
+
+  site_logo = ""
+  description = "My Web"
+
 [menus]
 
   [[menus.main]]
@@ -22,6 +29,11 @@ theme = "ananke"
     weight = 30
 
   [[menus.main]]
+    name = "Posts"
+    pageRef = "/posts"
+    weight = 40
+
+  [[menus.main]]
     name = "About"
     pageRef = "/about"
-    weight = 40
+    weight = 50
