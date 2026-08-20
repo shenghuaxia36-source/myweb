@@ -53,7 +53,7 @@
       {{ range .Site.Menus.main }}
         <li class="mobile-nav__item">
           <a
-            href="{{ .URL }}"
+            href="{{ .URL | relURL }}"
             class="mobile-nav__link{{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }} is-active{{ end }}"
           >
             {{ .Name }}
