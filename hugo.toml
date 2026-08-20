@@ -6,7 +6,7 @@ theme = "ananke"
 
 [params]
   # 修复了这里的全角中文双引号 “ 变成半角 "
-  mainSections = []
+  mainSections = ["technology", "ai", "life", "posts","about"]
 
   site_logo = ""
   description = "My Web"
