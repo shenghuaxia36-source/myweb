@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="MySQL 备份
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;]
+        SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;]
+        DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;]
+        CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;]
+        SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;&#43; override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;]
+        CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;]
+        CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;]
+    end
+    DATA --- CONF --- SYSTEMD
+  摘要
+
+汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。
+InnoDB 生产环境推荐：mysqldump --single-transaction --routines --triggers --events，实现不锁表热备并包含存储过程、触发器和事件。
+定时备份示例：crontab 每天 2 点执行 mysqldump &#43; gzip 压缩，落盘 /data/backup/。
+几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。
+实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 --skip-grant-tables --skip-networking 启动（密码恢复用途，属临时状态）。
+
+技术要点
+
+备份单库：mysqldump -u root -p mydb &gt; mydb.sql；多库加 --databases db1 db2 db3；全库加 --all-databases。
+备份并压缩（推荐）：mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz；恢复用 gunzip &lt; mydb.sql.gz | mysql -u root -p mydb。
+仅表结构 --no-data；仅数据 --no-create-info；单表 mysqldump -u root -p mydb users &gt; users.sql。
+InnoDB 热备参数：--single-transaction（热备份不锁表）、--routines（存储过程）、--triggers（触发器）、--events（事件）。
+查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length&#43;index_length。
+恢复流程：先 CREATE DATABASE mydb; 再 mysql -u root -p mydb &lt; mydb.sql。
+定时备份 crontab：0 2 * * * mysqldump -u root -p&#39;Password&#39; --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date &#43;\%F).sql.gz。
+MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump &ndash;single-transaction。
+systemctl cat mysql 可查看 systemd 单元及 override 片段；systemctl show -p FragmentPath mysql 定位主配置文件路径。
+当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 mysqld --skip-grant-tables --skip-networking，属于跳过授权表的维护模式，事后应移除。
+
+原文内容
+MySQL 常用备份命令如下。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/mysql-backup/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/mysql-backup/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="MySQL 备份 架构图 Copyflowchart TD subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;] SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;] DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;] CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;] SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;&#43; override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;] CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;] CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;] end DATA --- CONF --- SYSTEMD摘要 汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。 InnoDB 生产环境推荐：mysqldump --single-transaction --routines --triggers --events，实现不锁表热备并包含存储过程、触发器和事件。 定时备份示例：crontab 每天 2 点执行 mysqldump &#43; gzip 压缩，落盘 /data/backup/。 几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。 实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 --skip-grant-tables --skip-networking 启动（密码恢复用途，属临时状态）。 技术要点 备份单库：mysqldump -u root -p mydb &gt; mydb.sql；多库加 --databases db1 db2 db3；全库加 --all-databases。 备份并压缩（推荐）：mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz；恢复用 gunzip &lt; mydb.sql.gz | mysql -u root -p mydb。 仅表结构 --no-data；仅数据 --no-create-info；单表 mysqldump -u root -p mydb users &gt; users.sql。 InnoDB 热备参数：--single-transaction（热备份不锁表）、--routines（存储过程）、--triggers（触发器）、--events（事件）。 查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length&#43;index_length。 恢复流程：先 CREATE DATABASE mydb; 再 mysql -u root -p mydb &lt; mydb.sql。 定时备份 crontab：0 2 * * * mysqldump -u root -p&#39;Password&#39; --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date &#43;\%F).sql.gz。 MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump –single-transaction。 systemctl cat mysql 可查看 systemd 单元及 override 片段；systemctl show -p FragmentPath mysql 定位主配置文件路径。 当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 mysqld --skip-grant-tables --skip-networking，属于跳过授权表的维护模式，事后应移除。 原文内容 MySQL 常用备份命令如下。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="MySQL 备份 架构图 Copyflowchart TD subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;] SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;] DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;] CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;] SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;&#43; override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;] CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;] CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;] end DATA --- CONF --- SYSTEMD摘要 汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。 InnoDB 生产环境推荐：mysqldump --single-transaction --routines --triggers --events，实现不锁表热备并包含存储过程、触发器和事件。 定时备份示例：crontab 每天 2 点执行 mysqldump &#43; gzip 压缩，落盘 /data/backup/。 几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。 实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 --skip-grant-tables --skip-networking 启动（密码恢复用途，属临时状态）。 技术要点 备份单库：mysqldump -u root -p mydb &gt; mydb.sql；多库加 --databases db1 db2 db3；全库加 --all-databases。 备份并压缩（推荐）：mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz；恢复用 gunzip &lt; mydb.sql.gz | mysql -u root -p mydb。 仅表结构 --no-data；仅数据 --no-create-info；单表 mysqldump -u root -p mydb users &gt; users.sql。 InnoDB 热备参数：--single-transaction（热备份不锁表）、--routines（存储过程）、--triggers（触发器）、--events（事件）。 查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length&#43;index_length。 恢复流程：先 CREATE DATABASE mydb; 再 mysql -u root -p mydb &lt; mydb.sql。 定时备份 crontab：0 2 * * * mysqldump -u root -p&#39;Password&#39; --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date &#43;\%F).sql.gz。 MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump –single-transaction。 systemctl cat mysql 可查看 systemd 单元及 override 片段；systemctl show -p FragmentPath mysql 定位主配置文件路径。 当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 mysqld --skip-grant-tables --skip-networking，属于跳过授权表的维护模式，事后应移除。 原文内容 MySQL 常用备份命令如下。">
+	<meta itemprop="wordCount" content="564">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="MySQL 备份 架构图 Copyflowchart TD subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;] SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;] DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;] CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;] SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;&#43; override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;] CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;] CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;] end DATA --- CONF --- SYSTEMD摘要 汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。 InnoDB 生产环境推荐：mysqldump --single-transaction --routines --triggers --events，实现不锁表热备并包含存储过程、触发器和事件。 定时备份示例：crontab 每天 2 点执行 mysqldump &#43; gzip 压缩，落盘 /data/backup/。 几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。 实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 --skip-grant-tables --skip-networking 启动（密码恢复用途，属临时状态）。 技术要点 备份单库：mysqldump -u root -p mydb &gt; mydb.sql；多库加 --databases db1 db2 db3；全库加 --all-databases。 备份并压缩（推荐）：mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz；恢复用 gunzip &lt; mydb.sql.gz | mysql -u root -p mydb。 仅表结构 --no-data；仅数据 --no-create-info；单表 mysqldump -u root -p mydb users &gt; users.sql。 InnoDB 热备参数：--single-transaction（热备份不锁表）、--routines（存储过程）、--triggers（触发器）、--events（事件）。 查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length&#43;index_length。 恢复流程：先 CREATE DATABASE mydb; 再 mysql -u root -p mydb &lt; mydb.sql。 定时备份 crontab：0 2 * * * mysqldump -u root -p&#39;Password&#39; --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date &#43;\%F).sql.gz。 MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump –single-transaction。 systemctl cat mysql 可查看 systemd 单元及 override 片段；systemctl show -p FragmentPath mysql 定位主配置文件路径。 当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 mysqld --skip-grant-tables --skip-networking，属于跳过授权表的维护模式，事后应移除。 原文内容 MySQL 常用备份命令如下。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-backup">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-mysql-backup flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="mysql-备份">MySQL 备份</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;]
+        SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;]
+        DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;]
+        CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;]
+        SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;+ override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;]
+        CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;]
+        CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;]
+    end
+    DATA --- CONF --- SYSTEMD</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。</li>
+<li>InnoDB 生产环境推荐：<code>mysqldump --single-transaction --routines --triggers --events</code>，实现不锁表热备并包含存储过程、触发器和事件。</li>
+<li>定时备份示例：crontab 每天 2 点执行 mysqldump + gzip 压缩，落盘 /data/backup/。</li>
+<li>几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。</li>
+<li>实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 <code>--skip-grant-tables --skip-networking</code> 启动（密码恢复用途，属临时状态）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>备份单库：<code>mysqldump -u root -p mydb &gt; mydb.sql</code>；多库加 <code>--databases db1 db2 db3</code>；全库加 <code>--all-databases</code>。</li>
+<li>备份并压缩（推荐）：<code>mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz</code>；恢复用 <code>gunzip &lt; mydb.sql.gz | mysql -u root -p mydb</code>。</li>
+<li>仅表结构 <code>--no-data</code>；仅数据 <code>--no-create-info</code>；单表 <code>mysqldump -u root -p mydb users &gt; users.sql</code>。</li>
+<li>InnoDB 热备参数：<code>--single-transaction</code>（热备份不锁表）、<code>--routines</code>（存储过程）、<code>--triggers</code>（触发器）、<code>--events</code>（事件）。</li>
+<li>查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length+index_length。</li>
+<li>恢复流程：先 <code>CREATE DATABASE mydb;</code> 再 <code>mysql -u root -p mydb &lt; mydb.sql</code>。</li>
+<li>定时备份 crontab：<code>0 2 * * * mysqldump -u root -p'Password' --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date +\%F).sql.gz</code>。</li>
+<li>MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump &ndash;single-transaction。</li>
+<li><code>systemctl cat mysql</code> 可查看 systemd 单元及 override 片段；<code>systemctl show -p FragmentPath mysql</code> 定位主配置文件路径。</li>
+<li>当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 <code>mysqld --skip-grant-tables --skip-networking</code>，属于跳过授权表的维护模式，事后应移除。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>MySQL 常用备份命令如下。</p>
+<h2 id="1-备份单个数据库">1. 备份单个数据库</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb &gt; mydb.sql</span></span></code></pre></div>
+  </div><p>执行后输入密码。</p>
+<h2 id="2-备份多个数据库">2. 备份多个数据库</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --databases db1 db2 db3 &gt; databases.sql</span></span></code></pre></div>
+  </div><h2 id="3-备份所有数据库">3. 备份所有数据库</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --all-databases &gt; all_databases.sql</span></span></code></pre></div>
+  </div><h2 id="4-备份并压缩">4. 备份并压缩</h2>
+<p>推荐方式：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz</span></span></code></pre></div>
+  </div><p>恢复时：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gunzip &lt; mydb.sql.gz | mysql -u root -p mydb</span></span></code></pre></div>
+  </div><h2 id="5-仅备份表结构">5. 仅备份表结构</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --no-data mydb &gt; mydb_schema.sql</span></span></code></pre></div>
+  </div><h2 id="6-仅备份数据">6. 仅备份数据</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --no-create-info mydb &gt; mydb_data.sql</span></span></code></pre></div>
+  </div><h2 id="7-备份单个表">7. 备份单个表</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb users &gt; users.sql</span></span></code></pre></div>
+  </div><h2 id="8-innodb-数据库推荐备份">8. InnoDB 数据库推荐备份</h2>
+<p>生产环境常用：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -u root -p <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --routines <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --triggers <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --events <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mydb &gt; mydb.sql</span></span></code></pre></div>
+  </div><p>参数说明：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>--single-transaction  热备份，不锁表(InnoDB)
+</span></span><span style="display:flex;"><span>--routines            存储过程
+</span></span><span style="display:flex;"><span>--triggers            触发器
+</span></span><span style="display:flex;"><span>--events              事件</span></span></code></pre></div>
+  </div><h2 id="9-查看数据库大小">9. 查看数据库大小</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">SELECT</span>
+</span></span><span style="display:flex;"><span>  table_schema <span style="color:#66d9ef">AS</span> <span style="color:#e6db74">&#34;Database&#34;</span>,
+</span></span><span style="display:flex;"><span>  ROUND(<span style="color:#66d9ef">SUM</span>(data_length<span style="color:#f92672">+</span>index_length)<span style="color:#f92672">/</span><span style="color:#ae81ff">1024</span><span style="color:#f92672">/</span><span style="color:#ae81ff">1024</span>,<span style="color:#ae81ff">2</span>) <span style="color:#66d9ef">AS</span> <span style="color:#e6db74">&#34;Size(MB)&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">FROM</span> information_schema.tables
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">GROUP</span> <span style="color:#66d9ef">BY</span> table_schema;</span></span></code></pre></div>
+  </div><h2 id="10-恢复数据库">10. 恢复数据库</h2>
+<p>先创建数据库：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">DATABASE</span> mydb;</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql -u root -p mydb &lt; mydb.sql</span></span></code></pre></div>
+  </div><h2 id="11-定时备份示例">11. 定时备份示例</h2>
+<p>每天凌晨 2 点备份（crontab -e）：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#ae81ff">2</span> * * * mysqldump -u root -p<span style="color:#e6db74">&#39;Password&#39;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mydb | gzip &gt; /data/backup/mydb_<span style="color:#66d9ef">$(</span>date +<span style="color:#ae81ff">\%</span>F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><h2 id="12-mysql-80-大型数据库推荐">12. MySQL 8.0 大型数据库推荐</h2>
+<p>如果数据库已经几十 GB 或上百 GB，mysqldump &ndash;single-transaction 仍然可用，但更推荐：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>xtrabackup</span></span></code></pre></div>
+  </div><p>因为：</p>
+<ul>
+<li>速度更快</li>
+<li>真正热备</li>
+<li>支持增量备份</li>
+<li>恢复速度更高</li>
+</ul>
+<p>如果你的服务器是 mysql-master（从你的提示符看是主库），我还可以根据数据库大小帮你推荐是用 mysqldump 还是 xtrabackup。</p>
+<hr>
+<h2 id="实机记录mysql-repli">实机记录（mysql-repli）</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>systemctl cat mysql
+</span></span><span style="display:flex;"><span>root@mysql-repli:/var# grep datadir /etc/mysql/mysql.conf.d/mysqld.cnf
+</span></span><span style="display:flex;"><span>datadir <span style="color:#f92672">=</span> /data/oa_mysql/data/</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@mysql-repli:/var# df -h /data/oa_mysql/data/
+</span></span><span style="display:flex;"><span>Filesystem      Size  Used Avail Use% Mounted on
+</span></span><span style="display:flex;"><span>/dev/sdb1       442G   31G  390G   8% /data</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>df -h
+</span></span><span style="display:flex;"><span>Filesystem                         Size  Used Avail Use% Mounted on
+</span></span><span style="display:flex;"><span>tmpfs                              1.6G  976K  1.6G   1% /run
+</span></span><span style="display:flex;"><span>efivarfs                           128M   33K  128M   1% /sys/firmware/efi/efi_vars
+</span></span><span style="display:flex;"><span>/dev/mapper/ubuntu--vg-ubuntu--lv   38G  9.5G   27G  27% /
+</span></span><span style="display:flex;"><span>tmpfs                              7.9G     <span style="color:#ae81ff">0</span>  7.9G   0% /dev/shm
+</span></span><span style="display:flex;"><span>tmpfs                              5.0M     <span style="color:#ae81ff">0</span>  5.0M   0% /run/lock
+</span></span><span style="display:flex;"><span>/dev/sda2                          2.0G  201M  1.6G  11% /boot
+</span></span><span style="display:flex;"><span>/dev/sdb1                          442G   31G  390G   8% /data
+</span></span><span style="display:flex;"><span>/dev/sda1                          1.1G  6.2M  1.1G   1% /boot/efi
+</span></span><span style="display:flex;"><span>tmpfs                              1.6G   12K  1.6G   1% /run/user/1003</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@mysql-repli:/etc/mysql# systemctl cat mysql
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># /usr/lib/systemd/system/mysql.service</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># MySQL systemd service file</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Unit<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>Description<span style="color:#f92672">=</span>MySQL Community Server
+</span></span><span style="display:flex;"><span>After<span style="color:#f92672">=</span>network.target
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Install<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>WantedBy<span style="color:#f92672">=</span>multi-user.target
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Service<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>Type<span style="color:#f92672">=</span>notify
+</span></span><span style="display:flex;"><span>User<span style="color:#f92672">=</span>mysql
+</span></span><span style="display:flex;"><span>Group<span style="color:#f92672">=</span>mysql
+</span></span><span style="display:flex;"><span>PermissionsStartOnly<span style="color:#f92672">=</span>true
+</span></span><span style="display:flex;"><span>ExecStartPre<span style="color:#f92672">=</span>/usr/share/mysql/mysql-systemd-start pre
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>/usr/sbin/mysqld
+</span></span><span style="display:flex;"><span>TimeoutSec<span style="color:#f92672">=</span>infinity
+</span></span><span style="display:flex;"><span>Restart<span style="color:#f92672">=</span>on-failure
+</span></span><span style="display:flex;"><span>RuntimeDirectory<span style="color:#f92672">=</span>mysqld
+</span></span><span style="display:flex;"><span>RuntimeDirectoryMode<span style="color:#f92672">=</span><span style="color:#ae81ff">755</span>
+</span></span><span style="display:flex;"><span>LimitNOFILE<span style="color:#f92672">=</span><span style="color:#ae81ff">10000</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># Set enviroment variable MYSQLD_PARENT_PID. This is required for restart.</span>
+</span></span><span style="display:flex;"><span>Environment<span style="color:#f92672">=</span>MYSQLD_PARENT_PID<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># /etc/systemd/system/mysql.service.d/override.conf</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Service<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>/usr/sbin/mysqld --skip-grant-tables --skip-networking</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@mysql-repli:/etc/mysql# cat /etc/systemd/system/mysql.service.d/override.conf
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Service<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>/usr/sbin/mysqld --skip-grant-tables --skip-networking</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@mysql-repli:/etc/mysql# systemctl show -p FragmentPath mysql
+</span></span><span style="display:flex;"><span>FragmentPath<span style="color:#f92672">=</span>/usr/lib/systemd/system/mysql.service</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@mysql-repli:/etc/systemd/system/mysql.service.d# cat *.conf
+</span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Service<span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>/usr/sbin/mysqld --skip-grant-tables --skip-networking</span></span></code></pre></div>
+  </div><ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Cloudflare 业务简介
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph Cloudflare Connectivity Cloud
+        subgraph 应用安全与加速
+            CDN[CDN 全局加速]
+            DDoS[DDoS 防御 L3/4 &amp; L7]
+            WAF[WAF / API安全 / 机器人管理]
+            DNS[权威 DNS / 1.1.1.1]
+        end
+        subgraph 网络与 SASE
+            ZTNA[零信任网络访问 ZTNA]
+            SWG[安全 Web 网关 SWG]
+            NaaS[网络即服务 Magic WAN]
+            MAIL[企业邮件安全]
+        end
+        subgraph 开发者与边缘计算
+            WORKERS[Cloudflare Workers - V8 Isolate]
+            R2[R2 对象存储 - 免流量费]
+            D1[D1 Serverless SQL 数据库]
+            KV[Workers KV / Durable Objects]
+        end
+        subgraph 边缘 AI 平台
+            WAI[Workers AI - 边缘 GPU]
+            AIGW[AI Gateway - 监控/限流/缓存]
+        end
+    end
+    EDGE[全球 330&#43; 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud
+  摘要
+
+Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。
+免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。
+开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 &#43; 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。
+Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。
+免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。
+
+技术要点
+
+Anycast 边缘网络：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。
+DDoS 防御：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。
+Cloudflare Workers：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。
+R2 对象存储：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。
+D1 数据库：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。
+Cloudflare Pages：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。
+Zero Trust 免费版：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。
+SSL/TLS 证书：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。
+免费 WAF 规则：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。
+升级触发点：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。
+
+原文内容
+Cloudflare 从最初的&quot;CDN 与 DDoS 防护厂商&quot;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/cloudflare-brief/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/cloudflare-brief/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Cloudflare 业务简介 架构图 Copygraph TD subgraph Cloudflare Connectivity Cloud subgraph 应用安全与加速 CDN[CDN 全局加速] DDoS[DDoS 防御 L3/4 &amp; L7] WAF[WAF / API安全 / 机器人管理] DNS[权威 DNS / 1.1.1.1] end subgraph 网络与 SASE ZTNA[零信任网络访问 ZTNA] SWG[安全 Web 网关 SWG] NaaS[网络即服务 Magic WAN] MAIL[企业邮件安全] end subgraph 开发者与边缘计算 WORKERS[Cloudflare Workers - V8 Isolate] R2[R2 对象存储 - 免流量费] D1[D1 Serverless SQL 数据库] KV[Workers KV / Durable Objects] end subgraph 边缘 AI 平台 WAI[Workers AI - 边缘 GPU] AIGW[AI Gateway - 监控/限流/缓存] end end EDGE[全球 330&#43; 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud摘要 Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。 免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。 开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 &#43; 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。 Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。 免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。 技术要点 Anycast 边缘网络：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。 DDoS 防御：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。 Cloudflare Workers：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。 R2 对象存储：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。 D1 数据库：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。 Cloudflare Pages：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。 Zero Trust 免费版：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。 SSL/TLS 证书：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。 免费 WAF 规则：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。 升级触发点：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。 原文内容 Cloudflare 从最初的&#34;CDN 与 DDoS 防护厂商&#34;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Cloudflare 业务简介 架构图 Copygraph TD subgraph Cloudflare Connectivity Cloud subgraph 应用安全与加速 CDN[CDN 全局加速] DDoS[DDoS 防御 L3/4 &amp; L7] WAF[WAF / API安全 / 机器人管理] DNS[权威 DNS / 1.1.1.1] end subgraph 网络与 SASE ZTNA[零信任网络访问 ZTNA] SWG[安全 Web 网关 SWG] NaaS[网络即服务 Magic WAN] MAIL[企业邮件安全] end subgraph 开发者与边缘计算 WORKERS[Cloudflare Workers - V8 Isolate] R2[R2 对象存储 - 免流量费] D1[D1 Serverless SQL 数据库] KV[Workers KV / Durable Objects] end subgraph 边缘 AI 平台 WAI[Workers AI - 边缘 GPU] AIGW[AI Gateway - 监控/限流/缓存] end end EDGE[全球 330&#43; 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud摘要 Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。 免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。 开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 &#43; 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。 Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。 免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。 技术要点 Anycast 边缘网络：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。 DDoS 防御：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。 Cloudflare Workers：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。 R2 对象存储：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。 D1 数据库：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。 Cloudflare Pages：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。 Zero Trust 免费版：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。 SSL/TLS 证书：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。 免费 WAF 规则：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。 升级触发点：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。 原文内容 Cloudflare 从最初的&#34;CDN 与 DDoS 防护厂商&#34;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。">
+	<meta itemprop="wordCount" content="508">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Cloudflare 业务简介 架构图 Copygraph TD subgraph Cloudflare Connectivity Cloud subgraph 应用安全与加速 CDN[CDN 全局加速] DDoS[DDoS 防御 L3/4 &amp; L7] WAF[WAF / API安全 / 机器人管理] DNS[权威 DNS / 1.1.1.1] end subgraph 网络与 SASE ZTNA[零信任网络访问 ZTNA] SWG[安全 Web 网关 SWG] NaaS[网络即服务 Magic WAN] MAIL[企业邮件安全] end subgraph 开发者与边缘计算 WORKERS[Cloudflare Workers - V8 Isolate] R2[R2 对象存储 - 免流量费] D1[D1 Serverless SQL 数据库] KV[Workers KV / Durable Objects] end subgraph 边缘 AI 平台 WAI[Workers AI - 边缘 GPU] AIGW[AI Gateway - 监控/限流/缓存] end end EDGE[全球 330&#43; 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud摘要 Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。 免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。 开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 &#43; 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。 Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。 免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。 技术要点 Anycast 边缘网络：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。 DDoS 防御：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。 Cloudflare Workers：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。 R2 对象存储：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。 D1 数据库：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。 Cloudflare Pages：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。 Zero Trust 免费版：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。 SSL/TLS 证书：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。 免费 WAF 规则：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。 升级触发点：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。 原文内容 Cloudflare 从最初的&#34;CDN 与 DDoS 防护厂商&#34;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-Cloudflare-brief">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-Cloudflare-brief flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="cloudflare-业务简介">Cloudflare 业务简介</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph Cloudflare Connectivity Cloud
+        subgraph 应用安全与加速
+            CDN[CDN 全局加速]
+            DDoS[DDoS 防御 L3/4 &amp; L7]
+            WAF[WAF / API安全 / 机器人管理]
+            DNS[权威 DNS / 1.1.1.1]
+        end
+        subgraph 网络与 SASE
+            ZTNA[零信任网络访问 ZTNA]
+            SWG[安全 Web 网关 SWG]
+            NaaS[网络即服务 Magic WAN]
+            MAIL[企业邮件安全]
+        end
+        subgraph 开发者与边缘计算
+            WORKERS[Cloudflare Workers - V8 Isolate]
+            R2[R2 对象存储 - 免流量费]
+            D1[D1 Serverless SQL 数据库]
+            KV[Workers KV / Durable Objects]
+        end
+        subgraph 边缘 AI 平台
+            WAI[Workers AI - 边缘 GPU]
+            AIGW[AI Gateway - 监控/限流/缓存]
+        end
+    end
+    EDGE[全球 330+ 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。</li>
+<li>免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。</li>
+<li>开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 + 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。</li>
+<li>Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。</li>
+<li>免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Anycast 边缘网络</strong>：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。</li>
+<li><strong>DDoS 防御</strong>：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。</li>
+<li><strong>Cloudflare Workers</strong>：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。</li>
+<li><strong>R2 对象存储</strong>：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。</li>
+<li><strong>D1 数据库</strong>：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。</li>
+<li><strong>Cloudflare Pages</strong>：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。</li>
+<li><strong>Zero Trust 免费版</strong>：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。</li>
+<li><strong>SSL/TLS 证书</strong>：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。</li>
+<li><strong>免费 WAF 规则</strong>：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。</li>
+<li><strong>升级触发点</strong>：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>Cloudflare 从最初的&quot;CDN 与 DDoS 防护厂商&quot;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。</p>
+<p>整体业务架构、关键产品及免费功能明细如下：</p>
+<h2 id="一-总体业务架构与关键产品">一、 总体业务架构与关键产品</h2>
+<p>Cloudflare 的业务围绕其分布于全球 330 多个城市的庞大边缘网络（Anycast 架构）展开，主要划分为以下四大核心板块：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>┌─────────────────────────┐
+│ Cloudflare Connectivity │
+└────────────┬────────────┘
+             │
+  ┌──────────┬───────────────┴───────────────┬──────────────────┐
+  ▼          ▼                               ▼                  ▼
+应用安全与加速   网络与 SASE (Zero Trust)    开发者与边缘计算     边缘 AI 平台
+(WAF/CDN/DDoS) (Cloudflare One)            (Workers/R2/D1)     (Workers AI/Gateway)</code></pre>
+  </div><h3 id="1-应用程序交付与安全app-performance--security">1. 应用程序交付与安全（App Performance &amp; Security）</h3>
+<ul>
+<li><strong>CDN 与全局加速</strong>：利用全球节点对静态/动态内容进行智能缓存与路由优化（如 Argo Smart Routing）。</li>
+<li><strong>DDoS 防御</strong>：支持 L3/4（网络层）及 L7（应用层）的无上限容量抗 DDoS 攻击。</li>
+<li><strong>应用安全套件</strong>：包含 Web 应用防火墙（WAF）、API 安全保护、机器人管理（Bot Management）及 Rate Limiting（限速）。</li>
+<li><strong>DNS 服务</strong>：提供极速且安全的权威 DNS 解析，以及公共 DNS 解析服务（如著名的 1.1.1.1）。</li>
+</ul>
+<h3 id="2-网络与-zero-trust--sasecloudflare-one">2. 网络与 Zero Trust / SASE（Cloudflare One）</h3>
+<ul>
+<li><strong>零信任网络访问（ZTNA）</strong>：替换传统 VPN，提供基于身份和设备安全状态的内网应用无缝访问。</li>
+<li><strong>安全 Web 网关（SWG）</strong>：针对企业终端的 DNS 过滤、HTTP 流量拦截与恶意软件防护。</li>
+<li><strong>网络即服务（NaaS / Magic WAN）</strong>：提供分支机构连接、SD-WAN 替换以及边缘防火墙（FWaaS）。</li>
+<li><strong>企业邮件安全</strong>：防范钓鱼邮件、身份冒用及供应链攻击。</li>
+</ul>
+<h3 id="3-开发者与边缘计算平台developer-platform">3. 开发者与边缘计算平台（Developer Platform）</h3>
+<ul>
+<li><strong>Cloudflare Workers</strong>：基于 V8 Isolate 技术的无服务器（Serverless）计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm。</li>
+<li><strong>边缘存储生态</strong>：
+<ul>
+<li><strong>R2 Storage</strong>：兼容 S3 的对象存储，免收数据出流量费（No Egress Fees）。</li>
+<li><strong>D1</strong>：Serverless 边缘关系型 SQL 数据库。</li>
+<li><strong>Workers KV / Durable Objects</strong>：用于键值对存储与高并发有状态状态机的存储组件。</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-边缘-ai-平台ai-infrastructure">4. 边缘 AI 平台（AI Infrastructure）</h3>
+<ul>
+<li><strong>Workers AI</strong>：直接在 Cloudflare 的边缘 GPU 节点上运行开源大语言模型（如 Llama、Mistral）与图像/声音模型。</li>
+<li><strong>AI Gateway</strong>：提供针对主流 AI 服务的调用监控、速率限制、响应缓存与安全防泄漏控制。</li>
+</ul>
+<h2 id="二-免费功能与业务情况free-plan">二、 免费功能与业务情况（Free Plan）</h2>
+<p>Cloudflare 秉承&quot;构建更好的互联网&quot;理念，其免费版（Free Tier）非常慷慨，非常适合个人网站、独立开发者、开源项目及中小型企业初创期使用。</p>
+<h3 id="1-免费的网站与网络功能">1. 免费的&quot;网站与网络&quot;功能</h3>
+<table>
+	<thead>
+			<tr>
+					<th>功能模块</th>
+					<th>免费版包含的权益</th>
+					<th>适用场景 / 限制</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>DNS 解析</td>
+					<td>极速 DNS 服务、无限制域名托管</td>
+					<td>毫秒级解析响应速度</td>
+			</tr>
+			<tr>
+					<td>CDN &amp; 基础防护</td>
+					<td>无限 CDN 流量缓存、基础 Web 自动化防护</td>
+					<td>不支持大型视频/纯文件下载节点直连</td>
+			</tr>
+			<tr>
+					<td>DDoS 防护</td>
+					<td>无容量限制的 L3/4 及 L7 DDoS 防御</td>
+					<td>自动抵御各种规模的流量攻击</td>
+			</tr>
+			<tr>
+					<td>SSL/TLS 证书</td>
+					<td>免费提供通配符 SSL 证书，支持自动续期</td>
+					<td>强制 HTTPS 转换与 HTTP/2、HTTP/3 协议支持</td>
+			</tr>
+			<tr>
+					<td>基础 WAF 规则</td>
+					<td>5 条自定义 WAF 规则、基础 SQL 注入及恶意 IP 封禁</td>
+					<td>满足日常基础防护，高级规则需升级</td>
+			</tr>
+			<tr>
+					<td>页面规则 (Page Rules)</td>
+					<td>提供 3 条免费 Page Rules 规则</td>
+					<td>可用于设置特定路径的重定向或缓存策略</td>
+			</tr>
+	</tbody>
+</table>
+<h3 id="2-免费的开发者与-cloud-边缘额度">2. 免费的&quot;开发者与 Cloud 边缘&quot;额度</h3>
+<p>Cloudflare 的免费版并非仅限 CDN，在 Serverless 及 AI 领域也提供了极其有竞争力的每日免费额度（Free Tier Allowances）：</p>
+<ul>
+<li><strong>Cloudflare Workers</strong>：每日免费 100,000 次请求，支持 10ms CPU 运行时间。</li>
+<li><strong>Cloudflare Pages</strong>：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数。</li>
+<li><strong>R2 对象存储</strong>：每月免费 10 GB 存储空间、1,000 万次 Class B 读操作及 100 万次 Class A 写操作（且无流量出站费）。</li>
+<li><strong>D1 数据库</strong>：每天提供 500 万次读取和 10 万次写入的免费额度。</li>
+<li><strong>Workers AI</strong>：每天提供一定额度的免费神经元（Neurons），可用于免费调用边缘 GPU 运行小型 AI 模型。</li>
+</ul>
+<h3 id="3-免费的零信任安全zero-trust-free">3. 免费的&quot;零信任安全&quot;（Zero Trust Free）</h3>
+<ul>
+<li><strong>Cloudflare Zero Trust</strong>：免费支持最多 50 个用户/终端。</li>
+<li><strong>主要权益</strong>：包含身份认证网关 (ZTNA)、DNS 域名过滤、基础防护规则以及针对团队内网的无 VPN 安全穿透。</li>
+</ul>
+<h2 id="三-免费版的主要限制与升级触发点">三、 免费版的主要限制与升级触发点</h2>
+<p>尽管免费功能十分全面，但在以下场景中需要考量升级到 Pro / Business / Enterprise 计划：</p>
+<ul>
+<li><strong>机器人防护（Bot Management）</strong>：免费版仅提供基础的 IP 特征和 User-Agent 筛查；若遭遇复杂的黄牛抢购、数据刷虫，需使用付费版的机器学习与指纹验证机制。</li>
+<li><strong>大文件与视频传输</strong>：免费 CDN 不允许作为单一的视频分发网络，频繁超量传输大文件可能会触发 TOS 限制，需配合 R2 或 Stream 产品使用。</li>
+<li><strong>支持与 SLA 保障</strong>：免费版仅提供社区支持与工单排队，不提供服务等级协议（SLA）保障；企业级（Enterprise）则提供 15 分钟内的高优先响应和专属客户经理。</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

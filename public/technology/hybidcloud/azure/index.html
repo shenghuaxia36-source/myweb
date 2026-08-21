@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Azure 网络接入与全球分布（VNet 接入方式 / Private Link）
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;]
+        VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;]
+        subgraph Regions[&#34;各区域 VNet (Regional)&#34;]
+            VNET_US[&#34;美东 VNet&#34;]
+            VNET_EU[&#34;欧洲 VNet&#34;]
+            VNET_HK[&#34;东亚(香港) VNet&#34;]
+        end
+    end
+
+    subgraph OnPrem[&#34;本地机房 / 办公室&#34;]
+        IDC_BJ[&#34;北京 IDC&#34;]
+        OFFICE_LD[&#34;伦敦 Office&#34;]
+    end
+
+    IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN
+    OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN
+
+    VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK
+
+    subgraph PL[&#34;Private Link 私网访问 PaaS&#34;]
+        VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;]
+        PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;]
+        DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;]
+        SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;]
+        BLOB[&#34;Azure Blob Storage&#34;]
+        VM --&gt; PE --&gt; SQL
+        VM -.-&gt; DNS
+        PE --&gt; BLOB
+    end
+
+    subgraph Traditional[&#34;传统公网访问 (有风险)&#34;]
+        VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;]
+    end
+
+    subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;]
+        LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB
+    end
+  摘要
+
+本地网络对接 Azure VNet 有两种官方方式：Site-to-Site VPN（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 Azure ExpressRoute（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。
+单个 VNet 具有区域性（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 Global VNet Peering，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。
+全球多分支企业典型架构是 Azure Virtual WAN：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。
+Azure Private Link 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）&ldquo;插&quot;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。
+两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。
+
+技术要点
+
+Site-to-Site VPN 原理与定位：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。
+ExpressRoute 原理与定位：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。
+VNet 区域性 vs 全球连通：区分&quot;概念分布&quot;与&quot;物理连通&rdquo;——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。
+微软骨干网优势：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。
+Azure Virtual WAN 三大能力：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。
+Private Endpoint 机制：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。
+Private DNS Zone 联动：VM 解析 mysqldb.database.windows.net 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。
+安全闭环：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。
+IDC 访问存储的简化：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。
+公网访问 vs Private Link 对比：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。
+
+原文内容
+本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/hybidcloud/azure/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/hybidcloud/azure/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Azure 网络接入与全球分布（VNet 接入方式 / Private Link） 架构图 Copyflowchart TD subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;] VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;] subgraph Regions[&#34;各区域 VNet (Regional)&#34;] VNET_US[&#34;美东 VNet&#34;] VNET_EU[&#34;欧洲 VNet&#34;] VNET_HK[&#34;东亚(香港) VNet&#34;] end end subgraph OnPrem[&#34;本地机房 / 办公室&#34;] IDC_BJ[&#34;北京 IDC&#34;] OFFICE_LD[&#34;伦敦 Office&#34;] end IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK subgraph PL[&#34;Private Link 私网访问 PaaS&#34;] VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;] PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;] DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;] SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;] BLOB[&#34;Azure Blob Storage&#34;] VM --&gt; PE --&gt; SQL VM -.-&gt; DNS PE --&gt; BLOB end subgraph Traditional[&#34;传统公网访问 (有风险)&#34;] VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;] end subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;] LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB end摘要 本地网络对接 Azure VNet 有两种官方方式：Site-to-Site VPN（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 Azure ExpressRoute（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。 单个 VNet 具有区域性（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 Global VNet Peering，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。 全球多分支企业典型架构是 Azure Virtual WAN：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。 Azure Private Link 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）“插&#34;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。 两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。 技术要点 Site-to-Site VPN 原理与定位：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。 ExpressRoute 原理与定位：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。 VNet 区域性 vs 全球连通：区分&#34;概念分布&#34;与&#34;物理连通”——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。 微软骨干网优势：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。 Azure Virtual WAN 三大能力：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。 Private Endpoint 机制：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。 Private DNS Zone 联动：VM 解析 mysqldb.database.windows.net 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。 安全闭环：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。 IDC 访问存储的简化：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。 公网访问 vs Private Link 对比：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。 原文内容 本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Azure 网络接入与全球分布（VNet 接入方式 / Private Link） 架构图 Copyflowchart TD subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;] VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;] subgraph Regions[&#34;各区域 VNet (Regional)&#34;] VNET_US[&#34;美东 VNet&#34;] VNET_EU[&#34;欧洲 VNet&#34;] VNET_HK[&#34;东亚(香港) VNet&#34;] end end subgraph OnPrem[&#34;本地机房 / 办公室&#34;] IDC_BJ[&#34;北京 IDC&#34;] OFFICE_LD[&#34;伦敦 Office&#34;] end IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK subgraph PL[&#34;Private Link 私网访问 PaaS&#34;] VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;] PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;] DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;] SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;] BLOB[&#34;Azure Blob Storage&#34;] VM --&gt; PE --&gt; SQL VM -.-&gt; DNS PE --&gt; BLOB end subgraph Traditional[&#34;传统公网访问 (有风险)&#34;] VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;] end subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;] LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB end摘要 本地网络对接 Azure VNet 有两种官方方式：Site-to-Site VPN（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 Azure ExpressRoute（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。 单个 VNet 具有区域性（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 Global VNet Peering，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。 全球多分支企业典型架构是 Azure Virtual WAN：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。 Azure Private Link 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）“插&#34;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。 两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。 技术要点 Site-to-Site VPN 原理与定位：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。 ExpressRoute 原理与定位：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。 VNet 区域性 vs 全球连通：区分&#34;概念分布&#34;与&#34;物理连通”——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。 微软骨干网优势：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。 Azure Virtual WAN 三大能力：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。 Private Endpoint 机制：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。 Private DNS Zone 联动：VM 解析 mysqldb.database.windows.net 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。 安全闭环：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。 IDC 访问存储的简化：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。 公网访问 vs Private Link 对比：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。 原文内容 本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：">
+	<meta itemprop="wordCount" content="594">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Azure 网络接入与全球分布（VNet 接入方式 / Private Link） 架构图 Copyflowchart TD subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;] VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;] subgraph Regions[&#34;各区域 VNet (Regional)&#34;] VNET_US[&#34;美东 VNet&#34;] VNET_EU[&#34;欧洲 VNet&#34;] VNET_HK[&#34;东亚(香港) VNet&#34;] end end subgraph OnPrem[&#34;本地机房 / 办公室&#34;] IDC_BJ[&#34;北京 IDC&#34;] OFFICE_LD[&#34;伦敦 Office&#34;] end IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK subgraph PL[&#34;Private Link 私网访问 PaaS&#34;] VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;] PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;] DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;] SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;] BLOB[&#34;Azure Blob Storage&#34;] VM --&gt; PE --&gt; SQL VM -.-&gt; DNS PE --&gt; BLOB end subgraph Traditional[&#34;传统公网访问 (有风险)&#34;] VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;] end subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;] LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB end摘要 本地网络对接 Azure VNet 有两种官方方式：Site-to-Site VPN（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 Azure ExpressRoute（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。 单个 VNet 具有区域性（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 Global VNet Peering，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。 全球多分支企业典型架构是 Azure Virtual WAN：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。 Azure Private Link 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）“插&#34;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。 两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。 技术要点 Site-to-Site VPN 原理与定位：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。 ExpressRoute 原理与定位：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。 VNet 区域性 vs 全球连通：区分&#34;概念分布&#34;与&#34;物理连通”——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。 微软骨干网优势：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。 Azure Virtual WAN 三大能力：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。 Private Endpoint 机制：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。 Private DNS Zone 联动：VM 解析 mysqldb.database.windows.net 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。 安全闭环：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。 IDC 访问存储的简化：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。 公网访问 vs Private Link 对比：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。 原文内容 本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-AZURE">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-AZURE flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="azure-网络接入与全球分布vnet-接入方式--private-link">Azure 网络接入与全球分布（VNet 接入方式 / Private Link）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;]
+        VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;]
+        subgraph Regions[&#34;各区域 VNet (Regional)&#34;]
+            VNET_US[&#34;美东 VNet&#34;]
+            VNET_EU[&#34;欧洲 VNet&#34;]
+            VNET_HK[&#34;东亚(香港) VNet&#34;]
+        end
+    end
+
+    subgraph OnPrem[&#34;本地机房 / 办公室&#34;]
+        IDC_BJ[&#34;北京 IDC&#34;]
+        OFFICE_LD[&#34;伦敦 Office&#34;]
+    end
+
+    IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN
+    OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN
+
+    VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK
+
+    subgraph PL[&#34;Private Link 私网访问 PaaS&#34;]
+        VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;]
+        PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;]
+        DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;]
+        SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;]
+        BLOB[&#34;Azure Blob Storage&#34;]
+        VM --&gt; PE --&gt; SQL
+        VM -.-&gt; DNS
+        PE --&gt; BLOB
+    end
+
+    subgraph Traditional[&#34;传统公网访问 (有风险)&#34;]
+        VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;]
+    end
+
+    subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;]
+        LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>本地网络对接 Azure VNet 有两种官方方式：<strong>Site-to-Site VPN</strong>（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 <strong>Azure ExpressRoute</strong>（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。</li>
+<li>单个 VNet 具有<strong>区域性</strong>（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 <strong>Global VNet Peering</strong>，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。</li>
+<li>全球多分支企业典型架构是 <strong>Azure Virtual WAN</strong>：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。</li>
+<li><strong>Azure Private Link</strong> 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）&ldquo;插&quot;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。</li>
+<li>两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Site-to-Site VPN 原理与定位</strong>：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。</li>
+<li><strong>ExpressRoute 原理与定位</strong>：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。</li>
+<li><strong>VNet 区域性 vs 全球连通</strong>：区分&quot;概念分布&quot;与&quot;物理连通&rdquo;——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。</li>
+<li><strong>微软骨干网优势</strong>：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。</li>
+<li><strong>Azure Virtual WAN 三大能力</strong>：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。</li>
+<li><strong>Private Endpoint 机制</strong>：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。</li>
+<li><strong>Private DNS Zone 联动</strong>：VM 解析 <code>mysqldb.database.windows.net</code> 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。</li>
+<li><strong>安全闭环</strong>：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。</li>
+<li><strong>IDC 访问存储的简化</strong>：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。</li>
+<li><strong>公网访问 vs Private Link 对比</strong>：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：</p>
+<h3 id="一本地对接到-azure-vnet-的-2-种主要方式">一、本地对接到 Azure VNet 的 2 种主要方式</h3>
+<p>将本地网络与 Azure VNet 连通，主要有以下两种方案：</p>
+<p><strong>1. Site-to-Site VPN（站点到站点 IPSec VPN）</strong></p>
+<ul>
+<li>原理：利用公网建立一条安全的加密隧道（IPSec/IKE）。</li>
+<li>方式：在本地部署一台支持 IPSec 的防火墙/路由器（如 FortiGate、Palo Alto、Cisco），对接 Azure 端的 VPN Gateway（VPN 网关）。</li>
+<li>特点：部署快、成本低，适合中小流量或对延迟要求不极其苛刻的场景。</li>
+</ul>
+<p><strong>2. Azure ExpressRoute（企业级专线）</strong></p>
+<ul>
+<li>原理：不经过公网，通过电信运营商（如中国电信/联通、Equinix、AT&amp;T 等）建立一条从本地 IDC 到 Azure 机房的物理专线连接。</li>
+<li>方式：本地路由器通过专线接入到运营商的 ExpressRoute Location（对等位置），再接入微软骨干网。</li>
+<li>特点：高带宽（最高可达 100 Gbps）、超低延迟、高可靠性，且不走公网，安全性最高。</li>
+</ul>
+<h3 id="二azure-vnet-是全球分布的吗">二、Azure VNet 是全球分布的吗？</h3>
+<p>是的，微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）。但需要区分&quot;概念分布&quot;与&quot;物理连通&quot;：</p>
+<p><strong>1. 单个 VNet 具有区域性（Regional）</strong></p>
+<p>一个特定的 Azure VNet 始终创建在某一个具体的 Azure 区域（Region）（例如：East US、Southeast Asia、China North 3 等）。如果你在&quot;东亚（香港）&ldquo;建了一个 VNet，它的子网和 IP 地址池只存在于香港机房。</p>
+<p><strong>2. 通过&quot;VNet 全球对等互连&quot;实现全球打通（Global VNet Peering）</strong></p>
+<p>虽然单个 VNet 属于特定区域，但你可以将分布在全球不同区域的多个 VNet 连在一起：</p>
+<ul>
+<li>Global VNet Peering：可以将&quot;美东&quot;的 VNet 和&quot;欧洲&quot;的 VNet 直接打通。</li>
+<li>跨国流量不走互联网：两个跨国 VNet 之间的数据传输，完全走微软全球高速私有骨干网，延迟低且极度稳定。</li>
+</ul>
+<h3 id="三全球分布企业的典型架构azure-virtual-wan">三、全球分布企业的典型架构（Azure Virtual WAN）</h3>
+<p>如果你的公司在全球有多个分支机构（如中国、美国、欧洲）：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>[ 北京 IDC ] ----(专线)-----\
+        +---&gt; [ Azure Virtual WAN ] &lt;---&gt; 全球各区域的 VNet
+[ 伦敦 Office ] --(VPN)-----/</code></pre>
+  </div><p>微软提供了 Azure Virtual WAN（虚拟广域网）服务：</p>
+<ul>
+<li><strong>就近接入</strong>：北京办公室连接 Azure 北京/香港节点，伦敦办公室连接 Azure 伦敦节点。</li>
+<li><strong>骨干网传输</strong>：接入后，北京与伦敦之间的跨国通信直接跨越微软全球骨干网，无需自己搭建复杂的全球 Mesh VPN。</li>
+<li><strong>统一路由</strong>：配合前述的 Private Link，任何一个分支机构都可以通过这个全球网络，私密地访问位于全球任何 Azure 区域的数据库或存储服务。</li>
+</ul>
+<hr>
+<h3 id="azure-private-link-允许通过私网访问-azure-服务这是什么意思具体实例">Azure Private Link 允许通过私网访问 Azure 服务（这是什么意思，具体实例）</h3>
+<p>简单来说，Azure Private Link（私有链接）的核心作用是：把公网上的 Azure 云服务（如数据库、存储桶等），直接&quot;插&quot;进你自己的私有虚拟网络（VNet）里，给它分配一个内部私有 IP。</p>
+<p><strong>这句话代表什么意思？</strong></p>
+<p>在默认情况下，Azure 的 PaaS 服务（如 Azure SQL Database、Azure Blob Storage）都是带有公网 IP 接口的。</p>
+<ul>
+<li>没有 Private Link 时：你的虚拟机（VM）访问数据库时，数据包需要绕到公网入口，尽管传输过程加密，但数据的网络流量暴露在公网络线上，甚至容易面临 DDoS 攻击或数据泄露风险。</li>
+<li>有了 Private Link 之后：Azure 会在你自己的虚拟网络（VNet）内创建一个网卡（称为 Private Endpoint / 私有终端节点），并给它赋予一个内网 IP（如 10.0.1.5）。之后所有的访问都走微软内部的高速骨干网，完全绝缘于互联网。</li>
+</ul>
+<p><strong>典型应用场景与具体实例</strong></p>
+<p><strong>场景一：企业内部 VM 访问 Azure SQL 数据库（彻底关闭公网访问）</strong></p>
+<p>传统做法（不使用 Private Link）：</p>
+<ol>
+<li>建立一个 Azure SQL 数据库，获得域名：mysqldb.database.windows.net。</li>
+<li>该域名解析后对应一个公网 IP（如 40.x.x.x）。</li>
+<li>你的应用程序 VM 必须配置允许访问互联网，SQL 数据库上也必须开启&quot;允许 Azure 服务访问&quot;防火墙规则。</li>
+<li>安全隐患：数据库对外暴露了公网入口。</li>
+</ol>
+<p>Private Link 方案：</p>
+<ol>
+<li>在你的虚拟网络（如 10.0.0.0/16）中为该 SQL 数据库启用 Private Link。</li>
+<li>Azure 在你的子网中生成一个私有网卡，分配内网 IP：10.0.1.5。</li>
+<li>配合 Private DNS Zone（私有 DNS），当 VM 解析 mysqldb.database.windows.net 时，直接返回 10.0.1.5。</li>
+<li>你可以直接彻底禁用该数据库的公网访问开关（Disable public network access）。</li>
+<li>最终效果：应用程序访问数据库就像访问局域网内的某台内网服务器一样，数据绝对安全，不会经过互联网。</li>
+</ol>
+<p><strong>场景二：本地 IDC 机房通过 VPN / ExpressRoute 访问云上存储</strong></p>
+<p>架构实现：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>本地机房 ----(专线/VPN)----&gt; Azure 虚拟网络 (VNet) ----(Private Link)----&gt; Azure Blob Storage</code></pre>
+  </div><p>优势与区别：如果不用 Private Link，本地机房要访问 Azure 存储，要么走公网，要么需要配置非常复杂的 ExpressRoute Microsoft 附加对等（Microsoft Peering）路由。使用 Private Link 后，本地机房只需通过普通的专线/VPN 连到 Azure VNet，就能直接利用内网 IP 访问云上存储桶，大大降低了网络运维和安全合规成本。</p>
+<p><strong>总结对比</strong></p>
+<table>
+	<thead>
+			<tr>
+					<th>维度</th>
+					<th>普通公网访问 (Default)</th>
+					<th>使用 Private Link</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>访问路径</td>
+					<td>走互联网 / 公网节点</td>
+					<td>完全在微软内部骨干网传输</td>
+			</tr>
+			<tr>
+					<td>IP 地址类型</td>
+					<td>公网 IP (Public IP)</td>
+					<td>局域网私有 IP (如 10.x.x.x)</td>
+			</tr>
+			<tr>
+					<td>安全级别</td>
+					<td>较弱，暴露在公网，需依赖强防火墙规则</td>
+					<td>极高，完全关闭公网入口，防数据外泄</td>
+			</tr>
+			<tr>
+					<td>跨地域/跨租户</td>
+					<td>支持</td>
+					<td>支持（支持安全的 B2B 私网共享）</td>
+			</tr>
+	</tbody>
+</table>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

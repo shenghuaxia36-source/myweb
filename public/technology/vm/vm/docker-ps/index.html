@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="docker ps —— OA 服务器容器清单
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;]
+        subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;]
+            subgraph BR[&#34;bridge 网络 (默认)&#34;]
+                R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;]
+                M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;]
+                MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;]
+                ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;]
+                NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;]
+                LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;]
+                MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;]
+            end
+        end
+        DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G &#43; weaver 85G&lt;br/&gt;&#43; 安装包 tar.gz 22G&#34;]
+        DOCKER --- DATA
+    end
+  摘要
+
+记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。
+仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。
+Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。
+数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。
+docker system df 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。
+唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（docker ps -a --filter volume=… 可确认）。
+
+技术要点
+
+docker ps 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。
+docker network ls 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。
+docker ps -a --filter volume=&lt;卷名&gt; 可反查某个卷被哪个容器使用。
+docker system df -v 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。
+df -h 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。
+du -sh /data/weaver/docker（14G）与 docker system df 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。
+du -h --max-depth=1 /data | sort -hr 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。
+空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 docker rmi 回收约 2.5GB。
+mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。
+
+原文内容
+
+    
+      Copy
+    
+    docker ps
+CONTAINER ID   IMAGE                                              COMMAND                  CREATED        STATUS       PORTS                    NAMES
+f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    &#34;docker-entrypoint.s…&#34;   4 months ago   Up 5 weeks                            redis
+61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               &#34;docker-entrypoint.s…&#34;   4 months ago   Up 5 weeks                            mongodb
+6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     &#34;docker-entrypoint.s…&#34;   4 months ago   Up 5 weeks                            rabbitmq
+1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         &#34;/opt/bitnami/script…&#34;   4 months ago   Up 5 weeks                            elasticsearch
+1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   &#34;/usr/bin/supervisor…&#34;   4 months ago   Up 5 weeks                            nginx
+38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                &#34;bash&#34;                   4 months ago   Up 5 weeks   0.0.0.0:8100-&gt;8100/tcp   libreoffice
+f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   &#34;/bin/sh -c &#39;/opt/my…&#34;   4 months ago   Up 5 weeks   0.0.0.0:3308-&gt;3308/tcp   mysql
+  
+    
+      Copy
+    
+    root@oa-server:~# docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+feed72e799b1   bridge    bridge    local
+26164ddfd5aa   host      host      local
+02e59a6aa5bb   none      null      local
+  
+    
+      Copy
+    
+    root@oa-server:~# df -h
+Filesystem                         Size  Used Avail Use% Mounted on
+tmpfs                              6.3G  2.3M  6.3G   1% /run
+efivarfs                           128M   33K  128M   1% /sys/firmware/efi/efi_vars
+/dev/mapper/ubuntu--vg-ubuntu--lv   38G   19G   18G  52% /
+tmpfs                              32G     0   32G   0% /dev/shm
+tmpfs                              5.0M     0  5.0M   0% /run/lock
+/dev/sda2                          2.0G  214M  1.6G  12% /boot
+/dev/sdb1                          295G  124G  157G  45% /data
+/dev/sda1                          1.1G  6.2M  1.1G   1% /boot/efi
+overlay                            295G  124G  157G  45% /data/weaver/docker/overlay2/&lt;id&gt;/merged
+...（共 7 个 overlay 条目，对应每个运行中容器）
+tmpfs                              6.3G   96K  6.3G   1% /run/user/126
+tmpfs                              6.3G  84K  6.3G   1% /run/user/1005
+  
+    
+      Copy
+    
+    root@oa-server:~# docker volume ls
+DRIVER    VOLUME NAME
+local     6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+
+root@oa-server:~# docker ps -a --filter volume=6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+CONTAINER ID   IMAGE                                  COMMAND                  CREATED        STATUS       PORTS     NAMES
+61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30   &#34;docker-entrypoint.s…&#34;   4 months ago   Up 5 weeks             mongodb
+  
+    
+      Copy
+    
+    root@oa-server:~# docker system df
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          9         7         7.937GB   2.499GB (31%)
+Containers      7         7         595.7MB   0B (0%)
+Local Volumes   1         1         0B        0B
+Build Cache     0         0          0B        0B
+  
+    
+      Copy
+    
+    root@oa-server:~# docker system df -v
+Images space usage:
+
+REPOSITORY                             TAG                    IMAGE ID       CREATED         SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+reg.e-cology.cn/e10/e10-mongo          4.4.30                 0010f63d2695   7 months ago    409.2MB   0B            409.2MB       1
+reg.e-cology.cn/e10/redis              7.4.7                  07a03ad21d6a   8 months ago    117MB     0B            117MB         1
+reg.e-cology.cn/e10/google-chrome      v79-240723             fc3f52d88821   15 months ago   2.32GB    843MB         1.477GB       0
+reg.e-cology.cn/e10/e10-base-new       20240702_1050-squash   7fd7a959154c   2 years ago     843MB     843MB         0B            0
+reg.e-cology.cn/e10/e10-mysql          v2                     05f42e9517be   2 years ago     983.5MB   0B            983.5MB       1
+reg.e-cology.cn/e10/libreoffice        5.4                    d0d2baa78d0d   2 years ago     2.826GB   376.8MB       2.449GB       1
+reg.e-cology.cn/e10/elasticsearch      v7.17.18               28cc28a7b456   2 years ago     783.8MB   0B            783.8MB       1
+reg.e-cology.cn/e10/weaver-e10-front   20240312_14            f45ae7ef9127   2 years ago     810.4MB   376.8MB      433.6MB       1
+reg.e-cology.cn/e10/rabbitmq           3.10.7-management      6b94498c1b2a   3 years ago     261.8MB   0B            261.8MB       1
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                                              COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS       NAMES
+f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    &#34;docker-entrypoint.s…&#34;   0               0B        4 months ago   Up 5 weeks   redis
+61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               &#34;docker-entrypoint.s…&#34;   1               0B        4 months ago   Up 5 weeks   mongodb
+6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     &#34;docker-entrypoint.s…&#34;   0               0B        4 months ago   Up 5 weeks   rabbitmq
+1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         &#34;/opt/bitnami/script…&#34;   0               6.12MB    4 months ago   Up 5 weeks   elasticsearch
+1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   &#34;/usr/bin/supervisor…&#34;   0               66.3kB    4 months ago   Up 5 weeks   nginx
+38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                &#34;bash&#34;                   0               0B        4 months ago   Up 5 weeks   libreoffice
+f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   &#34;/bin/sh -c &#39;/opt/my…&#34;   0               590MB     4 months ago   Up 5 weeks   mysql
+
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a   1         0B
+
+Build cache usage: 0B
+  
+    
+      Copy
+    
+    root@oa-server:~# du -sh /data/weaver/docker
+14G     /data/weaver/docker
+
+root@oa-server:~# du -h --max-depth=1 /data | sort -hr
+129G    /data
+85G     /data/weaver
+22G     /data/ecology
+16K     /data/lost&#43;found
+
+root@oa-server:/data# ls -l
+total 22828996
+drwxr-xr-x  3 root root         4096 Mar 13 13:14 ecology
+-rwxr-xr-x  1 root root 23376861578 Mar 27 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+drwxr-xr-x  2 chery chery       16384 Nov  7  2025 lost&#43;found
+drwxr-xr-x 18 root root         4096 Mar 31 13:00 weaver
+
+root@oa-server:/data# du -sh *
+22G     ecology
+22G     Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+16K     lost&#43;found
+85G     weaver
+  ">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/docker-ps/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/docker-ps/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="docker ps —— OA 服务器容器清单 架构图 Copyflowchart TD subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;] subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;] subgraph BR[&#34;bridge 网络 (默认)&#34;] R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;] M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;] MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;] ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;] NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;] LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;] MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;] end end DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G &#43; weaver 85G&lt;br/&gt;&#43; 安装包 tar.gz 22G&#34;] DOCKER --- DATA end摘要 记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。 仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。 Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。 数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。 docker system df 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。 唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（docker ps -a --filter volume=… 可确认）。 技术要点 docker ps 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。 docker network ls 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。 docker ps -a --filter volume=&lt;卷名&gt; 可反查某个卷被哪个容器使用。 docker system df -v 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。 df -h 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。 du -sh /data/weaver/docker（14G）与 docker system df 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。 du -h --max-depth=1 /data | sort -hr 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。 空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 docker rmi 回收约 2.5GB。 mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。 原文内容 Copydocker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 4 months ago Up 5 weeks 0.0.0.0:8100-&gt;8100/tcp libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 4 months ago Up 5 weeks 0.0.0.0:3308-&gt;3308/tcp mysqlCopyroot@oa-server:~# docker network ls NETWORK ID NAME DRIVER SCOPE feed72e799b1 bridge bridge local 26164ddfd5aa host host local 02e59a6aa5bb none null localCopyroot@oa-server:~# df -h Filesystem Size Used Avail Use% Mounted on tmpfs 6.3G 2.3M 6.3G 1% /run efivarfs 128M 33K 128M 1% /sys/firmware/efi/efi_vars /dev/mapper/ubuntu--vg-ubuntu--lv 38G 19G 18G 52% / tmpfs 32G 0 32G 0% /dev/shm tmpfs 5.0M 0 5.0M 0% /run/lock /dev/sda2 2.0G 214M 1.6G 12% /boot /dev/sdb1 295G 124G 157G 45% /data /dev/sda1 1.1G 6.2M 1.1G 1% /boot/efi overlay 295G 124G 157G 45% /data/weaver/docker/overlay2/&lt;id&gt;/merged ...（共 7 个 overlay 条目，对应每个运行中容器） tmpfs 6.3G 96K 6.3G 1% /run/user/126 tmpfs 6.3G 84K 6.3G 1% /run/user/1005Copyroot@oa-server:~# docker volume ls DRIVER VOLUME NAME local 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a root@oa-server:~# docker ps -a --filter volume=6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodbCopyroot@oa-server:~# docker system df TYPE TOTAL ACTIVE SIZE RECLAIMABLE Images 9 7 7.937GB 2.499GB (31%) Containers 7 7 595.7MB 0B (0%) Local Volumes 1 1 0B 0B Build Cache 0 0 0B 0BCopyroot@oa-server:~# docker system df -v Images space usage: REPOSITORY TAG IMAGE ID CREATED SIZE SHARED SIZE UNIQUE SIZE CONTAINERS reg.e-cology.cn/e10/e10-mongo 4.4.30 0010f63d2695 7 months ago 409.2MB 0B 409.2MB 1 reg.e-cology.cn/e10/redis 7.4.7 07a03ad21d6a 8 months ago 117MB 0B 117MB 1 reg.e-cology.cn/e10/google-chrome v79-240723 fc3f52d88821 15 months ago 2.32GB 843MB 1.477GB 0 reg.e-cology.cn/e10/e10-base-new 20240702_1050-squash 7fd7a959154c 2 years ago 843MB 843MB 0B 0 reg.e-cology.cn/e10/e10-mysql v2 05f42e9517be 2 years ago 983.5MB 0B 983.5MB 1 reg.e-cology.cn/e10/libreoffice 5.4 d0d2baa78d0d 2 years ago 2.826GB 376.8MB 2.449GB 1 reg.e-cology.cn/e10/elasticsearch v7.17.18 28cc28a7b456 2 years ago 783.8MB 0B 783.8MB 1 reg.e-cology.cn/e10/weaver-e10-front 20240312_14 f45ae7ef9127 2 years ago 810.4MB 376.8MB 433.6MB 1 reg.e-cology.cn/e10/rabbitmq 3.10.7-management 6b94498c1b2a 3 years ago 261.8MB 0B 261.8MB 1 Containers space usage: CONTAINER ID IMAGE COMMAND LOCAL VOLUMES SIZE CREATED STATUS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 1 0B 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 0 6.12MB 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 0 66.3kB 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 0 0B 4 months ago Up 5 weeks libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 0 590MB 4 months ago Up 5 weeks mysql Local Volumes space usage: VOLUME NAME LINKS SIZE 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a 1 0B Build cache usage: 0BCopyroot@oa-server:~# du -sh /data/weaver/docker 14G /data/weaver/docker root@oa-server:~# du -h --max-depth=1 /data | sort -hr 129G /data 85G /data/weaver 22G /data/ecology 16K /data/lost&#43;found root@oa-server:/data# ls -l total 22828996 drwxr-xr-x 3 root root 4096 Mar 13 13:14 ecology -rwxr-xr-x 1 root root 23376861578 Mar 27 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz drwxr-xr-x 2 chery chery 16384 Nov 7 2025 lost&#43;found drwxr-xr-x 18 root root 4096 Mar 31 13:00 weaver root@oa-server:/data# du -sh * 22G ecology 22G Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz 16K lost&#43;found 85G weaver">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="docker ps —— OA 服务器容器清单 架构图 Copyflowchart TD subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;] subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;] subgraph BR[&#34;bridge 网络 (默认)&#34;] R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;] M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;] MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;] ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;] NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;] LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;] MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;] end end DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G &#43; weaver 85G&lt;br/&gt;&#43; 安装包 tar.gz 22G&#34;] DOCKER --- DATA end摘要 记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。 仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。 Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。 数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。 docker system df 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。 唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（docker ps -a --filter volume=… 可确认）。 技术要点 docker ps 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。 docker network ls 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。 docker ps -a --filter volume=&lt;卷名&gt; 可反查某个卷被哪个容器使用。 docker system df -v 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。 df -h 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。 du -sh /data/weaver/docker（14G）与 docker system df 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。 du -h --max-depth=1 /data | sort -hr 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。 空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 docker rmi 回收约 2.5GB。 mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。 原文内容 Copydocker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 4 months ago Up 5 weeks 0.0.0.0:8100-&gt;8100/tcp libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 4 months ago Up 5 weeks 0.0.0.0:3308-&gt;3308/tcp mysqlCopyroot@oa-server:~# docker network ls NETWORK ID NAME DRIVER SCOPE feed72e799b1 bridge bridge local 26164ddfd5aa host host local 02e59a6aa5bb none null localCopyroot@oa-server:~# df -h Filesystem Size Used Avail Use% Mounted on tmpfs 6.3G 2.3M 6.3G 1% /run efivarfs 128M 33K 128M 1% /sys/firmware/efi/efi_vars /dev/mapper/ubuntu--vg-ubuntu--lv 38G 19G 18G 52% / tmpfs 32G 0 32G 0% /dev/shm tmpfs 5.0M 0 5.0M 0% /run/lock /dev/sda2 2.0G 214M 1.6G 12% /boot /dev/sdb1 295G 124G 157G 45% /data /dev/sda1 1.1G 6.2M 1.1G 1% /boot/efi overlay 295G 124G 157G 45% /data/weaver/docker/overlay2/&lt;id&gt;/merged ...（共 7 个 overlay 条目，对应每个运行中容器） tmpfs 6.3G 96K 6.3G 1% /run/user/126 tmpfs 6.3G 84K 6.3G 1% /run/user/1005Copyroot@oa-server:~# docker volume ls DRIVER VOLUME NAME local 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a root@oa-server:~# docker ps -a --filter volume=6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodbCopyroot@oa-server:~# docker system df TYPE TOTAL ACTIVE SIZE RECLAIMABLE Images 9 7 7.937GB 2.499GB (31%) Containers 7 7 595.7MB 0B (0%) Local Volumes 1 1 0B 0B Build Cache 0 0 0B 0BCopyroot@oa-server:~# docker system df -v Images space usage: REPOSITORY TAG IMAGE ID CREATED SIZE SHARED SIZE UNIQUE SIZE CONTAINERS reg.e-cology.cn/e10/e10-mongo 4.4.30 0010f63d2695 7 months ago 409.2MB 0B 409.2MB 1 reg.e-cology.cn/e10/redis 7.4.7 07a03ad21d6a 8 months ago 117MB 0B 117MB 1 reg.e-cology.cn/e10/google-chrome v79-240723 fc3f52d88821 15 months ago 2.32GB 843MB 1.477GB 0 reg.e-cology.cn/e10/e10-base-new 20240702_1050-squash 7fd7a959154c 2 years ago 843MB 843MB 0B 0 reg.e-cology.cn/e10/e10-mysql v2 05f42e9517be 2 years ago 983.5MB 0B 983.5MB 1 reg.e-cology.cn/e10/libreoffice 5.4 d0d2baa78d0d 2 years ago 2.826GB 376.8MB 2.449GB 1 reg.e-cology.cn/e10/elasticsearch v7.17.18 28cc28a7b456 2 years ago 783.8MB 0B 783.8MB 1 reg.e-cology.cn/e10/weaver-e10-front 20240312_14 f45ae7ef9127 2 years ago 810.4MB 376.8MB 433.6MB 1 reg.e-cology.cn/e10/rabbitmq 3.10.7-management 6b94498c1b2a 3 years ago 261.8MB 0B 261.8MB 1 Containers space usage: CONTAINER ID IMAGE COMMAND LOCAL VOLUMES SIZE CREATED STATUS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 1 0B 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 0 6.12MB 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 0 66.3kB 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 0 0B 4 months ago Up 5 weeks libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 0 590MB 4 months ago Up 5 weeks mysql Local Volumes space usage: VOLUME NAME LINKS SIZE 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a 1 0B Build cache usage: 0BCopyroot@oa-server:~# du -sh /data/weaver/docker 14G /data/weaver/docker root@oa-server:~# du -h --max-depth=1 /data | sort -hr 129G /data 85G /data/weaver 22G /data/ecology 16K /data/lost&#43;found root@oa-server:/data# ls -l total 22828996 drwxr-xr-x 3 root root 4096 Mar 13 13:14 ecology -rwxr-xr-x 1 root root 23376861578 Mar 27 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz drwxr-xr-x 2 chery chery 16384 Nov 7 2025 lost&#43;found drwxr-xr-x 18 root root 4096 Mar 31 13:00 weaver root@oa-server:/data# du -sh * 22G ecology 22G Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz 16K lost&#43;found 85G weaver">
+	<meta itemprop="wordCount" content="749">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="docker ps —— OA 服务器容器清单 架构图 Copyflowchart TD subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;] subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;] subgraph BR[&#34;bridge 网络 (默认)&#34;] R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;] M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;] MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;] ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;] NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;] LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;] MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;] end end DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G &#43; weaver 85G&lt;br/&gt;&#43; 安装包 tar.gz 22G&#34;] DOCKER --- DATA end摘要 记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。 仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。 Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。 数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。 docker system df 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。 唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（docker ps -a --filter volume=… 可确认）。 技术要点 docker ps 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。 docker network ls 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。 docker ps -a --filter volume=&lt;卷名&gt; 可反查某个卷被哪个容器使用。 docker system df -v 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。 df -h 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。 du -sh /data/weaver/docker（14G）与 docker system df 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。 du -h --max-depth=1 /data | sort -hr 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。 空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 docker rmi 回收约 2.5GB。 mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。 原文内容 Copydocker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 4 months ago Up 5 weeks 0.0.0.0:8100-&gt;8100/tcp libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 4 months ago Up 5 weeks 0.0.0.0:3308-&gt;3308/tcp mysqlCopyroot@oa-server:~# docker network ls NETWORK ID NAME DRIVER SCOPE feed72e799b1 bridge bridge local 26164ddfd5aa host host local 02e59a6aa5bb none null localCopyroot@oa-server:~# df -h Filesystem Size Used Avail Use% Mounted on tmpfs 6.3G 2.3M 6.3G 1% /run efivarfs 128M 33K 128M 1% /sys/firmware/efi/efi_vars /dev/mapper/ubuntu--vg-ubuntu--lv 38G 19G 18G 52% / tmpfs 32G 0 32G 0% /dev/shm tmpfs 5.0M 0 5.0M 0% /run/lock /dev/sda2 2.0G 214M 1.6G 12% /boot /dev/sdb1 295G 124G 157G 45% /data /dev/sda1 1.1G 6.2M 1.1G 1% /boot/efi overlay 295G 124G 157G 45% /data/weaver/docker/overlay2/&lt;id&gt;/merged ...（共 7 个 overlay 条目，对应每个运行中容器） tmpfs 6.3G 96K 6.3G 1% /run/user/126 tmpfs 6.3G 84K 6.3G 1% /run/user/1005Copyroot@oa-server:~# docker volume ls DRIVER VOLUME NAME local 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a root@oa-server:~# docker ps -a --filter volume=6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 4 months ago Up 5 weeks mongodbCopyroot@oa-server:~# docker system df TYPE TOTAL ACTIVE SIZE RECLAIMABLE Images 9 7 7.937GB 2.499GB (31%) Containers 7 7 595.7MB 0B (0%) Local Volumes 1 1 0B 0B Build Cache 0 0 0B 0BCopyroot@oa-server:~# docker system df -v Images space usage: REPOSITORY TAG IMAGE ID CREATED SIZE SHARED SIZE UNIQUE SIZE CONTAINERS reg.e-cology.cn/e10/e10-mongo 4.4.30 0010f63d2695 7 months ago 409.2MB 0B 409.2MB 1 reg.e-cology.cn/e10/redis 7.4.7 07a03ad21d6a 8 months ago 117MB 0B 117MB 1 reg.e-cology.cn/e10/google-chrome v79-240723 fc3f52d88821 15 months ago 2.32GB 843MB 1.477GB 0 reg.e-cology.cn/e10/e10-base-new 20240702_1050-squash 7fd7a959154c 2 years ago 843MB 843MB 0B 0 reg.e-cology.cn/e10/e10-mysql v2 05f42e9517be 2 years ago 983.5MB 0B 983.5MB 1 reg.e-cology.cn/e10/libreoffice 5.4 d0d2baa78d0d 2 years ago 2.826GB 376.8MB 2.449GB 1 reg.e-cology.cn/e10/elasticsearch v7.17.18 28cc28a7b456 2 years ago 783.8MB 0B 783.8MB 1 reg.e-cology.cn/e10/weaver-e10-front 20240312_14 f45ae7ef9127 2 years ago 810.4MB 376.8MB 433.6MB 1 reg.e-cology.cn/e10/rabbitmq 3.10.7-management 6b94498c1b2a 3 years ago 261.8MB 0B 261.8MB 1 Containers space usage: CONTAINER ID IMAGE COMMAND LOCAL VOLUMES SIZE CREATED STATUS NAMES f898b67a04e8 reg.e-cology.cn/e10/redis:7.4.7 &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks redis 61923dff4b7d reg.e-cology.cn/e10/e10-mongo:4.4.30 &#34;docker-entrypoint.s…&#34; 1 0B 4 months ago Up 5 weeks mongodb 6cfd89401b22 reg.e-cology.cn/e10/rabbitmq:3.10.7-management &#34;docker-entrypoint.s…&#34; 0 0B 4 months ago Up 5 weeks rabbitmq 1a8eed99569d reg.e-cology.cn/e10/elasticsearch:v7.17.18 &#34;/opt/bitnami/script…&#34; 0 6.12MB 4 months ago Up 5 weeks elasticsearch 1383f817a181 reg.e-cology.cn/e10/weaver-e10-front:20240312_14 &#34;/usr/bin/supervisor…&#34; 0 66.3kB 4 months ago Up 5 weeks nginx 38f53922b596 reg.e-cology.cn/e10/libreoffice:5.4 &#34;bash&#34; 0 0B 4 months ago Up 5 weeks libreoffice f4bc7a2ab990 reg.e-cology.cn/e10/e10-mysql:v2 &#34;/bin/sh -c &#39;/opt/my…&#34; 0 590MB 4 months ago Up 5 weeks mysql Local Volumes space usage: VOLUME NAME LINKS SIZE 6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a 1 0B Build cache usage: 0BCopyroot@oa-server:~# du -sh /data/weaver/docker 14G /data/weaver/docker root@oa-server:~# du -h --max-depth=1 /data | sort -hr 129G /data 85G /data/weaver 22G /data/ecology 16K /data/lost&#43;found root@oa-server:/data# ls -l total 22828996 drwxr-xr-x 3 root root 4096 Mar 13 13:14 ecology -rwxr-xr-x 1 root root 23376861578 Mar 27 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz drwxr-xr-x 2 chery chery 16384 Nov 7 2025 lost&#43;found drwxr-xr-x 18 root root 4096 Mar 31 13:00 weaver root@oa-server:/data# du -sh * 22G ecology 22G Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz 16K lost&#43;found 85G weaver">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-docker ps">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-docker ps flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="docker-ps--oa-服务器容器清单">docker ps —— OA 服务器容器清单</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;]
+        subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;]
+            subgraph BR[&#34;bridge 网络 (默认)&#34;]
+                R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;]
+                M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;]
+                MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;]
+                ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;]
+                NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;]
+                LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;]
+                MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;]
+            end
+        end
+        DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G + weaver 85G&lt;br/&gt;+ 安装包 tar.gz 22G&#34;]
+        DOCKER --- DATA
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。</li>
+<li>仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。</li>
+<li>Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。</li>
+<li>数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。</li>
+<li><code>docker system df</code> 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。</li>
+<li>唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（<code>docker ps -a --filter volume=…</code> 可确认）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><code>docker ps</code> 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。</li>
+<li><code>docker network ls</code> 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。</li>
+<li><code>docker ps -a --filter volume=&lt;卷名&gt;</code> 可反查某个卷被哪个容器使用。</li>
+<li><code>docker system df -v</code> 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。</li>
+<li><code>df -h</code> 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。</li>
+<li><code>du -sh /data/weaver/docker</code>（14G）与 <code>docker system df</code> 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。</li>
+<li><code>du -h --max-depth=1 /data | sort -hr</code> 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。</li>
+<li>空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 <code>docker rmi</code> 回收约 2.5GB。</li>
+<li>mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker ps
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                              COMMAND                  CREATED        STATUS       PORTS                    NAMES
+</span></span><span style="display:flex;"><span>f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            redis
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            mongodb
+</span></span><span style="display:flex;"><span>6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            rabbitmq
+</span></span><span style="display:flex;"><span>1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         <span style="color:#e6db74">&#34;/opt/bitnami/script…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            elasticsearch
+</span></span><span style="display:flex;"><span>1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   <span style="color:#e6db74">&#34;/usr/bin/supervisor…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            nginx
+</span></span><span style="display:flex;"><span>38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                <span style="color:#e6db74">&#34;bash&#34;</span>                   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   0.0.0.0:8100-&gt;8100/tcp   libreoffice
+</span></span><span style="display:flex;"><span>f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   <span style="color:#e6db74">&#34;/bin/sh -c &#39;/opt/my…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   0.0.0.0:3308-&gt;3308/tcp   mysql</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker network ls
+</span></span><span style="display:flex;"><span>NETWORK ID     NAME      DRIVER    SCOPE
+</span></span><span style="display:flex;"><span>feed72e799b1   bridge    bridge    local
+</span></span><span style="display:flex;"><span>26164ddfd5aa   host      host      local
+</span></span><span style="display:flex;"><span>02e59a6aa5bb   none      null      local</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# df -h
+</span></span><span style="display:flex;"><span>Filesystem                         Size  Used Avail Use% Mounted on
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G  2.3M  6.3G   1% /run
+</span></span><span style="display:flex;"><span>efivarfs                           128M   33K  128M   1% /sys/firmware/efi/efi_vars
+</span></span><span style="display:flex;"><span>/dev/mapper/ubuntu--vg-ubuntu--lv   38G   19G   18G  52% /
+</span></span><span style="display:flex;"><span>tmpfs                              32G     <span style="color:#ae81ff">0</span>   32G   0% /dev/shm
+</span></span><span style="display:flex;"><span>tmpfs                              5.0M     <span style="color:#ae81ff">0</span>  5.0M   0% /run/lock
+</span></span><span style="display:flex;"><span>/dev/sda2                          2.0G  214M  1.6G  12% /boot
+</span></span><span style="display:flex;"><span>/dev/sdb1                          295G  124G  157G  45% /data
+</span></span><span style="display:flex;"><span>/dev/sda1                          1.1G  6.2M  1.1G   1% /boot/efi
+</span></span><span style="display:flex;"><span>overlay                            295G  124G  157G  45% /data/weaver/docker/overlay2/&lt;id&gt;/merged
+</span></span><span style="display:flex;"><span>...（共 <span style="color:#ae81ff">7</span> 个 overlay 条目，对应每个运行中容器）
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G   96K  6.3G   1% /run/user/126
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G  84K  6.3G   1% /run/user/1005</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker volume ls
+</span></span><span style="display:flex;"><span>DRIVER    VOLUME NAME
+</span></span><span style="display:flex;"><span>local     6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:~# docker ps -a --filter volume<span style="color:#f92672">=</span>6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                  COMMAND                  CREATED        STATUS       PORTS     NAMES
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30   <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks             mongodb</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker system df
+</span></span><span style="display:flex;"><span>TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+</span></span><span style="display:flex;"><span>Images          <span style="color:#ae81ff">9</span>         <span style="color:#ae81ff">7</span>         7.937GB   2.499GB <span style="color:#f92672">(</span>31%<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>Containers      <span style="color:#ae81ff">7</span>         <span style="color:#ae81ff">7</span>         595.7MB   0B <span style="color:#f92672">(</span>0%<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>Local Volumes   <span style="color:#ae81ff">1</span>         <span style="color:#ae81ff">1</span>         0B        0B
+</span></span><span style="display:flex;"><span>Build Cache     <span style="color:#ae81ff">0</span>         <span style="color:#ae81ff">0</span>          0B        0B</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker system df -v
+</span></span><span style="display:flex;"><span>Images space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>REPOSITORY                             TAG                    IMAGE ID       CREATED         SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-mongo          4.4.30                 0010f63d2695   <span style="color:#ae81ff">7</span> months ago    409.2MB   0B            409.2MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/redis              7.4.7                  07a03ad21d6a   <span style="color:#ae81ff">8</span> months ago    117MB     0B            117MB         <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/google-chrome      v79-240723             fc3f52d88821   <span style="color:#ae81ff">15</span> months ago   2.32GB    843MB         1.477GB       <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-base-new       20240702_1050-squash   7fd7a959154c   <span style="color:#ae81ff">2</span> years ago     843MB     843MB         0B            <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-mysql          v2                     05f42e9517be   <span style="color:#ae81ff">2</span> years ago     983.5MB   0B            983.5MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/libreoffice        5.4                    d0d2baa78d0d   <span style="color:#ae81ff">2</span> years ago     2.826GB   376.8MB       2.449GB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/elasticsearch      v7.17.18               28cc28a7b456   <span style="color:#ae81ff">2</span> years ago     783.8MB   0B            783.8MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/weaver-e10-front   20240312_14            f45ae7ef9127   <span style="color:#ae81ff">2</span> years ago     810.4MB   376.8MB      433.6MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/rabbitmq           3.10.7-management      6b94498c1b2a   <span style="color:#ae81ff">3</span> years ago     261.8MB   0B            261.8MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Containers space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                              COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS       NAMES
+</span></span><span style="display:flex;"><span>f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   redis
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">1</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   mongodb
+</span></span><span style="display:flex;"><span>6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   rabbitmq
+</span></span><span style="display:flex;"><span>1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         <span style="color:#e6db74">&#34;/opt/bitnami/script…&#34;</span>   <span style="color:#ae81ff">0</span>               6.12MB    <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   elasticsearch
+</span></span><span style="display:flex;"><span>1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   <span style="color:#e6db74">&#34;/usr/bin/supervisor…&#34;</span>   <span style="color:#ae81ff">0</span>               66.3kB    <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   nginx
+</span></span><span style="display:flex;"><span>38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                <span style="color:#e6db74">&#34;bash&#34;</span>                   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   libreoffice
+</span></span><span style="display:flex;"><span>f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   <span style="color:#e6db74">&#34;/bin/sh -c &#39;/opt/my…&#34;</span>   <span style="color:#ae81ff">0</span>               590MB     <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   mysql
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Local Volumes space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>VOLUME NAME                                                        LINKS     SIZE
+</span></span><span style="display:flex;"><span>6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a   <span style="color:#ae81ff">1</span>         0B
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Build cache usage: 0B</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# du -sh /data/weaver/docker
+</span></span><span style="display:flex;"><span>14G     /data/weaver/docker
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:~# du -h --max-depth<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span> /data | sort -hr
+</span></span><span style="display:flex;"><span>129G    /data
+</span></span><span style="display:flex;"><span>85G     /data/weaver
+</span></span><span style="display:flex;"><span>22G     /data/ecology
+</span></span><span style="display:flex;"><span>16K     /data/lost+found
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:/data# ls -l
+</span></span><span style="display:flex;"><span>total <span style="color:#ae81ff">22828996</span>
+</span></span><span style="display:flex;"><span>drwxr-xr-x  <span style="color:#ae81ff">3</span> root root         <span style="color:#ae81ff">4096</span> Mar <span style="color:#ae81ff">13</span> 13:14 ecology
+</span></span><span style="display:flex;"><span>-rwxr-xr-x  <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">23376861578</span> Mar <span style="color:#ae81ff">27</span> 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+</span></span><span style="display:flex;"><span>drwxr-xr-x  <span style="color:#ae81ff">2</span> chery chery       <span style="color:#ae81ff">16384</span> Nov  <span style="color:#ae81ff">7</span>  <span style="color:#ae81ff">2025</span> lost+found
+</span></span><span style="display:flex;"><span>drwxr-xr-x <span style="color:#ae81ff">18</span> root root         <span style="color:#ae81ff">4096</span> Mar <span style="color:#ae81ff">31</span> 13:00 weaver
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:/data# du -sh *
+</span></span><span style="display:flex;"><span>22G     ecology
+</span></span><span style="display:flex;"><span>22G     Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+</span></span><span style="display:flex;"><span>16K     lost+found
+</span></span><span style="display:flex;"><span>85G     weaver</span></span></code></pre></div>
+  </div><ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

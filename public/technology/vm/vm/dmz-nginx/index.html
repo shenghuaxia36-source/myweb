@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="DMZ 反向代理（dmz-nginx）
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;]
+    FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;]
+    NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]
+  摘要
+
+FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。
+反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。
+SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。
+提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。
+提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。
+证书更新零中断：只需更新 Nginx 的 certs 目录并 nginx -s reload，无需重启后端业务或变动 FortiGate。
+
+技术要点
+
+FortiGate 是&quot;保安门卫&quot;（查验身份、放行端口），反向代理是&quot;前台接待员&quot;（引导访客到正确房间并精细管理行为）。
+FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。
+FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。
+Nginx 80 端口 server 块使用 return 301 https://$host$request_uri; 强制跳转 HTTPS。
+Nginx 443 server 开启 listen 443 ssl http2，配置 ssl_protocols TLSv1.2 TLSv1.3、ssl_ciphers HIGH:!aNULL:!MD5、ssl_session_cache shared:SSL:10m。
+SSL 卸载核心：proxy_pass http://192.168.10.50:8080; 后端无需证书，同时通过 proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https 传递真实客户端信息。
+验证 SSL 卸载：在后端 tcpdump -i any port 8080 -A 抓包，应看到明文 HTTP 请求头及 X-Forwarded-Proto: https 报头。
+运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。
+
+原文内容
+已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/dmz-nginx/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/dmz-nginx/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="DMZ 反向代理（dmz-nginx） 架构图 Copyflowchart TD U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;] FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;] NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]摘要 FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。 反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。 SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。 提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。 提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。 证书更新零中断：只需更新 Nginx 的 certs 目录并 nginx -s reload，无需重启后端业务或变动 FortiGate。 技术要点 FortiGate 是&#34;保安门卫&#34;（查验身份、放行端口），反向代理是&#34;前台接待员&#34;（引导访客到正确房间并精细管理行为）。 FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。 FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。 Nginx 80 端口 server 块使用 return 301 https://$host$request_uri; 强制跳转 HTTPS。 Nginx 443 server 开启 listen 443 ssl http2，配置 ssl_protocols TLSv1.2 TLSv1.3、ssl_ciphers HIGH:!aNULL:!MD5、ssl_session_cache shared:SSL:10m。 SSL 卸载核心：proxy_pass http://192.168.10.50:8080; 后端无需证书，同时通过 proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https 传递真实客户端信息。 验证 SSL 卸载：在后端 tcpdump -i any port 8080 -A 抓包，应看到明文 HTTP 请求头及 X-Forwarded-Proto: https 报头。 运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。 原文内容 已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="DMZ 反向代理（dmz-nginx） 架构图 Copyflowchart TD U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;] FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;] NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]摘要 FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。 反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。 SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。 提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。 提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。 证书更新零中断：只需更新 Nginx 的 certs 目录并 nginx -s reload，无需重启后端业务或变动 FortiGate。 技术要点 FortiGate 是&#34;保安门卫&#34;（查验身份、放行端口），反向代理是&#34;前台接待员&#34;（引导访客到正确房间并精细管理行为）。 FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。 FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。 Nginx 80 端口 server 块使用 return 301 https://$host$request_uri; 强制跳转 HTTPS。 Nginx 443 server 开启 listen 443 ssl http2，配置 ssl_protocols TLSv1.2 TLSv1.3、ssl_ciphers HIGH:!aNULL:!MD5、ssl_session_cache shared:SSL:10m。 SSL 卸载核心：proxy_pass http://192.168.10.50:8080; 后端无需证书，同时通过 proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https 传递真实客户端信息。 验证 SSL 卸载：在后端 tcpdump -i any port 8080 -A 抓包，应看到明文 HTTP 请求头及 X-Forwarded-Proto: https 报头。 运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。 原文内容 已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？">
+	<meta itemprop="wordCount" content="679">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="DMZ 反向代理（dmz-nginx） 架构图 Copyflowchart TD U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;] FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;] NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]摘要 FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。 反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。 SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。 提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。 提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。 证书更新零中断：只需更新 Nginx 的 certs 目录并 nginx -s reload，无需重启后端业务或变动 FortiGate。 技术要点 FortiGate 是&#34;保安门卫&#34;（查验身份、放行端口），反向代理是&#34;前台接待员&#34;（引导访客到正确房间并精细管理行为）。 FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。 FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。 Nginx 80 端口 server 块使用 return 301 https://$host$request_uri; 强制跳转 HTTPS。 Nginx 443 server 开启 listen 443 ssl http2，配置 ssl_protocols TLSv1.2 TLSv1.3、ssl_ciphers HIGH:!aNULL:!MD5、ssl_session_cache shared:SSL:10m。 SSL 卸载核心：proxy_pass http://192.168.10.50:8080; 后端无需证书，同时通过 proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https 传递真实客户端信息。 验证 SSL 卸载：在后端 tcpdump -i any port 8080 -A 抓包，应看到明文 HTTP 请求头及 X-Forwarded-Proto: https 报头。 运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。 原文内容 已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-dmz-nginx">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-dmz-nginx flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="dmz-反向代理dmz-nginx">DMZ 反向代理（dmz-nginx）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;]
+    FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;]
+    NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。</li>
+<li>反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。</li>
+<li>SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。</li>
+<li>提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。</li>
+<li>提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。</li>
+<li>证书更新零中断：只需更新 Nginx 的 certs 目录并 <code>nginx -s reload</code>，无需重启后端业务或变动 FortiGate。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>FortiGate 是&quot;保安门卫&quot;（查验身份、放行端口），反向代理是&quot;前台接待员&quot;（引导访客到正确房间并精细管理行为）。</li>
+<li>FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。</li>
+<li>FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。</li>
+<li>Nginx 80 端口 server 块使用 <code>return 301 https://$host$request_uri;</code> 强制跳转 HTTPS。</li>
+<li>Nginx 443 server 开启 <code>listen 443 ssl http2</code>，配置 <code>ssl_protocols TLSv1.2 TLSv1.3</code>、<code>ssl_ciphers HIGH:!aNULL:!MD5</code>、<code>ssl_session_cache shared:SSL:10m</code>。</li>
+<li>SSL 卸载核心：<code>proxy_pass http://192.168.10.50:8080;</code> 后端无需证书，同时通过 <code>proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https</code> 传递真实客户端信息。</li>
+<li>验证 SSL 卸载：在后端 <code>tcpdump -i any port 8080 -A</code> 抓包，应看到明文 HTTP 请求头及 <code>X-Forwarded-Proto: https</code> 报头。</li>
+<li>运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？</p>
+<p>FortiGate 防火墙和反向代理（Reverse Proxy）解决的是不同层面（网络层 vs. 应用层）的安全与管理问题。</p>
+<p>简单来说：FortiGate 是&quot;保安门卫&quot;，负责查验身份和放行车辆；而反向代理是&quot;前台/接待员&quot;，负责把访客引导到正确的房间，并对其具体行为进行精细管理。</p>
+<p>以下是即使有了 FortiGate DMZ，依然建议/需要部署反向代理的几个核心原因：</p>
+<h3 id="1-业务防护维度的差异网络层-vs-应用层">1. 业务防护维度的差异（网络层 vs 应用层）</h3>
+<ul>
+<li><strong>FortiGate (防火墙 / DMZ)</strong>：主要工作在网络层（L3/L4）和传输层。它负责访问控制（IP、端口、协议），比如只允许公网的 443 端口流量进入 DMZ。虽然 FortiGate 带有 WAF/IPS 模块，但它的核心强项依然是流量筛选和网络隔离。</li>
+<li><strong>反向代理</strong>：工作在应用层（L7）。它可以深入理解 HTTP/HTTPS 报文的具体内容（如 Header、Cookie、URL 路径、请求参数），从而执行更精细的逻辑过滤和路由。</li>
+</ul>
+<h3 id="2-核心功能补充">2. 核心功能补充</h3>
+<p>即使 FortiGate 隔离了 DMZ，反向代理还能提供以下防火墙无法替代或做不好功能：</p>
+<p><strong>① 隐蔽内部真实网络架构与收敛暴露面</strong></p>
+<ul>
+<li>不暴露多台服务器：如果 DMZ 内有 10 个不同的 Web 应用（比如 OA、CRM、官网），不需要在 FortiGate 上映射 10 个外网 IP 或开放 10 个不同端口。</li>
+<li>统一入口：只需将反向代理暴露给 FortiGate，所有外网请求都发给反向代理，再由它根据域名或路径转发给内部真正的服务器。外部完全看不到后端具体有哪些服务器及其真实 IP。</li>
+</ul>
+<p><strong>② SSL/TLS 证书统一管理与卸载 (SSL Termination)</strong></p>
+<p>如果没有反向代理，你需要在后端的每一台 Web 服务器上配置和更新 SSL 证书。</p>
+<p>部署反向代理后，所有证书只需在反向代理上一键配置。解密工作在代理层完成，代理与后端服务器之间可以使用 HTTP 或内部轻量加密，大幅减轻后端服务器的计算压力，同时也极大地简化了证书续期与运维。</p>
+<p><strong>③ 灵活的负载均衡与平滑发布</strong></p>
+<p>反向代理（如 Nginx、HAProxy、Traefik）具备极强的应用层负载均衡能力（如轮询、IP Hash、权重分发）。</p>
+<p>支持无缝轮换（Rolling Update）与灰度发布：在后端服务器升级或维护时，只需在反向代理中摘除节点，前端用户完全无感知。</p>
+<p><strong>④ 高级路由与请求重写</strong></p>
+<ul>
+<li>可以轻松实现基于 URL 路径的路由（例如 /api 转发给 API 集群，/static 转发给静态资源服务器）。</li>
+<li>轻松处理请求头修改、跨域（CORS）配置、URL 重写、重定向（HTTP 强制转 HTTPS）等纯业务逻辑需求。</li>
+</ul>
+<h3 id="3-典型的联合架构最佳实践">3. 典型的联合架构（最佳实践）</h3>
+<p>在企业级安全架构中，两者通常是协同工作而非替代关系：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>[ 互联网 Users ]
+</span></span><span style="display:flex;"><span>│
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ FortiGate 防火墙 ]  &lt;--- 1. 过滤非法 IP/端口、防止 DDoS、基础 IPS 扫描
+</span></span><span style="display:flex;"><span>│ (只放行 80/443 端口)
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ DMZ 区: 反向代理 ] &lt;--- 2. SSL 卸载、统一域名入口、应用路由、WAF防护
+</span></span><span style="display:flex;"><span>│
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ DMZ/内网: 业务服务器集群 ] (OA、CRM、API 等)</span></span></code></pre></div>
+  </div><h3 id="总结">总结</h3>
+<ul>
+<li>只有 FortiGate：你的应用服务器直接暴露在网络前沿（哪怕在 DMZ），需要自己处理 SSL 证书、暴露多个 IP/端口，且难以做灵活的 HTTP 路由和负载均衡。</li>
+<li>FortiGate + 反向代理：FortiGate 挡住网络层的恶意攻击和非法端口扫描，反向代理收敛 Web 入口并提供高效的应用层分发与管理，达成纵深防御（Defense in Depth）。</li>
+</ul>
+<hr>
+<h2 id="ssltls-证书统一管理与卸载-ssl-termination--部署实例和验证方案">SSL/TLS 证书统一管理与卸载 (SSL Termination) —— 部署实例和验证方案</h2>
+<p>在企业网络架构中，将 FortiGate 防火墙 与 反向代理（以 Nginx 为例） 结合，实现 SSL 卸载（SSL Termination）与证书统一管理 是非常标准的最佳实践。</p>
+<h3 id="架构拓扑与流量路径">架构拓扑与流量路径</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>[ 客户端 (公网) ]
+</span></span><span style="display:flex;"><span>│  HTTPS (443)
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ FortiGate 防火墙 ]  (只做 L3/L4 端口转发/DNAT，将 443 转发至 Nginx)
+</span></span><span style="display:flex;"><span>│  HTTPS (443)
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ DMZ: Nginx 反向代理 ] (持有 SSL 证书，完成解密，解密为 HTTP)
+</span></span><span style="display:flex;"><span>│  HTTP (80)
+</span></span><span style="display:flex;"><span>▼
+</span></span><span style="display:flex;"><span>[ 内网/后端 业务服务器 ] (如 192.168.10.50:8080，无需配置 SSL 证书)</span></span></code></pre></div>
+  </div><h3 id="一部署实例">一、部署实例</h3>
+<h4 id="1-环境参数准备">1. 环境参数准备</h4>
+<ul>
+<li>域名：app.example.com</li>
+<li>FortiGate 外网 IP：203.0.113.10</li>
+<li>Nginx（反向代理）IP：10.0.1.100（位于 DMZ 区）</li>
+<li>后端业务服务器 IP：192.168.10.50:8080（位于内网 LAN）</li>
+<li>SSL 证书文件：
+<ul>
+<li>证书公钥：/etc/nginx/certs/app.example.com.crt</li>
+<li>证书私钥：/etc/nginx/certs/app.example.com.key</li>
+</ul>
+</li>
+</ul>
+<h4 id="2-nginx-反向代理配置ssl-卸载核心">2. Nginx 反向代理配置（SSL 卸载核心）</h4>
+<p>在 Nginx 所在服务器上配置 app.example.com.conf：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-nginx" data-lang="nginx"><span style="display:flex;"><span><span style="color:#66d9ef">server</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">listen</span> <span style="color:#ae81ff">80</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">server_name</span> <span style="color:#e6db74">app.example.com</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e"># 将所有 HTTP 请求强制重定向至 HTTPS
+</span></span></span><span style="display:flex;"><span>    <span style="color:#f92672">return</span> <span style="color:#ae81ff">301</span> <span style="color:#e6db74">https://</span>$host$request_uri;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">server</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">listen</span> <span style="color:#ae81ff">443</span> <span style="color:#e6db74">ssl</span> <span style="color:#e6db74">http2</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">server_name</span> <span style="color:#e6db74">app.example.com</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e"># 1. 统一管理 SSL 证书
+</span></span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_certificate</span>      <span style="color:#e6db74">/etc/nginx/certs/app.example.com.crt</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_certificate_key</span>  <span style="color:#e6db74">/etc/nginx/certs/app.example.com.key</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e"># 2. SSL 加密协议与套件优化
+</span></span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_protocols</span> <span style="color:#e6db74">TLSv1.2</span> <span style="color:#e6db74">TLSv1.3</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_ciphers</span> <span style="color:#e6db74">HIGH:!aNULL:!MD5</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_prefer_server_ciphers</span> <span style="color:#66d9ef">on</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_session_cache</span> <span style="color:#e6db74">shared:SSL:10m</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ssl_session_timeout</span> <span style="color:#ae81ff">10m</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e"># 3. 反向代理与 SSL 卸载配置（解密后发送 HTTP 给后端）
+</span></span></span><span style="display:flex;"><span>    <span style="color:#f92672">location</span> <span style="color:#e6db74">/</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_pass</span> <span style="color:#e6db74">http://192.168.10.50:8080</span>;    <span style="color:#75715e"># 后端服务器无需配置证书
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e"># 传递客户端真实信息给后端应用
+</span></span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_set_header</span> <span style="color:#e6db74">Host</span> $host;
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_set_header</span> <span style="color:#e6db74">X-Real-IP</span> $remote_addr;
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_set_header</span> <span style="color:#e6db74">X-Forwarded-For</span> $proxy_add_x_forwarded_for;
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_set_header</span> <span style="color:#e6db74">X-Forwarded-Proto</span> <span style="color:#e6db74">https</span>;  <span style="color:#75715e"># 告知后端实际访问使用的是 HTTPS
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e"># 超时设置
+</span></span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_connect_timeout</span> <span style="color:#e6db74">60s</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">proxy_read_timeout</span> <span style="color:#e6db74">60s</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><h4 id="3-fortigate-防火墙配置只做端口放行与映射">3. FortiGate 防火墙配置（只做端口放行与映射）</h4>
+<p><strong>① 配置虚拟 IP（VIP / 端口映射）</strong></p>
+<ul>
+<li>Name: VIP-HTTPS-To-Nginx</li>
+<li>External IP: 203.0.113.10</li>
+<li>Mapped IP: 10.0.1.100</li>
+<li>Port Forwarding: 开启</li>
+<li>Protocol: TCP</li>
+<li>External Port: 443</li>
+<li>Map to Port: 443</li>
+</ul>
+<p><strong>② 配置防火墙策略（Firewall Policy）</strong></p>
+<ul>
+<li>Incoming Interface: wan1 (外网口)</li>
+<li>Outgoing Interface: dmz (DMZ 口)</li>
+<li>Source: All</li>
+<li>Destination: VIP-HTTPS-To-Nginx</li>
+<li>Service: HTTPS</li>
+<li>Action: ACCEPT</li>
+<li>NAT: 关闭（保留客户端真实 IP）</li>
+</ul>
+<h3 id="二验证与测试方案">二、验证与测试方案</h3>
+<p>配置完成后，分步骤执行以下验证，确认 SSL 卸载和代理路由正常。</p>
+<p><strong>验证 1：基本联通性与 SSL 握手验证</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># 查看 SSL 握手过程与证书是否生效</span>
+</span></span><span style="display:flex;"><span>curl -vI https://app.example.com</span></span></code></pre></div>
+  </div><p>预期输出标志：</p>
+<ul>
+<li>显示 SSL connection using TLSv1.3。</li>
+<li>证书颁发者与域名正确无误。</li>
+<li>响应状态码为 HTTP/2 200 或相应的正常状态。</li>
+</ul>
+<p><strong>验证 2：验证 HTTP 强制跳转 HTTPS</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>curl -I http://app.example.com</span></span></code></pre></div>
+  </div><p>预期输出：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>HTTP/1.1 301 Moved Permanently
+</span></span><span style="display:flex;"><span>Location: https://app.example.com/</span></span></code></pre></div>
+  </div><p><strong>验证 3：验证 SSL 确实在 Nginx 层被卸载（核心验证）</strong></p>
+<p>要在后端确认 SSL 已解密，可在后端业务服务器（192.168.10.50）上抓包分析：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># 在后端服务器上抓取 8080 端口的流量</span>
+</span></span><span style="display:flex;"><span>tcpdump -i any port <span style="color:#ae81ff">8080</span> -A</span></span></code></pre></div>
+  </div><p>然后再在外部发起请求 <code>curl https://app.example.com</code>。</p>
+<p>预期输出：</p>
+<ul>
+<li>抓包结果中可以直接看到明文的 HTTP 请求头（如 GET / HTTP/1.1）以及包含 X-Forwarded-Proto: https 报头。</li>
+<li>说明流量进入 Nginx 前是 HTTPS 加密流，通过 Nginx 后被彻底解密为 HTTP 明文发送给后端，验证 SSL 卸载成功。</li>
+</ul>
+<p><strong>验证 4：客户端真实 IP 传递验证</strong></p>
+<p>在后端应用的日志（如 Tomcat、Node.js、Nginx 后端日志）中查看日志格式。</p>
+<p>预期输出：</p>
+<ul>
+<li>日志记录的访问者 IP 为公网客户端的真实 IP，而不是 DMZ 区 Nginx（10.0.1.100）或 FortiGate 的 IP，证明 X-Forwarded-For 传递正常。</li>
+</ul>
+<h3 id="运维总结">运维总结</h3>
+<p>通过这种方案：</p>
+<ul>
+<li><strong>证书更新零中断</strong>：未来续期 SSL 证书时，仅需更新 Nginx 的 /etc/nginx/certs/ 目录并运行 <code>nginx -s reload</code>，无需重启任何后端业务服务，也不需要变动 FortiGate 防火墙。</li>
+<li><strong>性能优化</strong>：CPU 密集的 SSL 加解密计算全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

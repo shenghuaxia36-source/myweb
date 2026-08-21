@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="总部与数据中心的 Azure 架构（AZ-104 知识地图）
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph Corp[&#34;企业本地网络&#34;]
+        HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;]
+        MBA[&#34;分公司A Melbourne&#34;]
+        MBB[&#34;分公司B Brisbane&#34;]
+    end
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBA
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBB
+    HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;]
+
+    subgraph AE[&#34;Azure Australia East&#34;]
+        GW
+        subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;]
+            subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;]
+                LB[&#34;Load Balancer&#34;]
+                A1[&#34;APP1&#34;]
+                A2[&#34;APP2&#34;]
+                A3[&#34;APP3&#34;]
+            end
+            subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;]
+                DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)]
+                PE[&#34;Private Endpoint 10.0.2.10&#34;]
+            end
+            MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;]
+            NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;]
+            RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;]
+            STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)]
+        end
+    end
+
+    subgraph ASE[&#34;Azure Australia Southeast&#34;]
+        DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;]
+    end
+
+    subgraph M365[&#34;M365 / 管理平面&#34;]
+        EID[&#34;Entra ID &#43; MFA&lt;br/&gt;&#43; Conditional Access&#34;]
+        AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;]
+        SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;]
+    end
+
+    USER[&#34;Internet ↓443&#34;] --&gt; LB
+    LB --&gt; A1 &amp; A2 &amp; A3
+    PVNet --&gt;|&#34;VNet Peering&#34;| DRV
+    STG --&gt; PE
+    AZMON -.-&gt; PVNet
+  摘要
+
+以&quot;总部（Sydney）&#43; 分公司 A（Melbourne）&#43; 分公司 B（Brisbane）MPLS/VPN 互联 &#43; Azure Australia East&quot;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。
+VNet（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。
+Subnet 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；NSG 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。
+VPN Gateway 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；Route Table（UDR）控制&quot;去哪走&quot;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。
+Private Endpoint &#43; Private DNS 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 companystorage.blob.core.windows.net 解析为 10.0.2.10，员工访问只能走企业网络。
+双数据中心设计：主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。
+
+技术要点
+
+VNet 定义与作用：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。
+Subnet 隔离：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。
+NSG 规则设计：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。
+Route Table (UDR)：告诉数据包&quot;去哪走&quot;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。
+VPN Gateway 与 Hub-Spoke：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。
+Private Endpoint 私网化：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。
+Private DNS 配套机制：专门给 Private Endpoint 配套——Storage 公网域名 companystorage.blob.core.windows.net 通过 Private DNS 解析为 10.0.2.10，员工使用 https://companystorage.blob.core.windows.net 时自动变成 10.0.2.10 访问。
+Load Balancer 高可用与扩展：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。
+存储与双数据中心：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。
+监控与零信任：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。
+
+原文内容
+这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/hybidcloud/%E6%80%BB%E9%83%A8%E4%B8%8E%E6%95%B0%E6%8D%AE%E4%B8%AD%E5%BF%83%E7%9A%84azure%E6%9E%B6%E6%9E%84/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/hybidcloud/%E6%80%BB%E9%83%A8%E4%B8%8E%E6%95%B0%E6%8D%AE%E4%B8%AD%E5%BF%83%E7%9A%84azure%E6%9E%B6%E6%9E%84/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="总部与数据中心的 Azure 架构（AZ-104 知识地图） 架构图 Copyflowchart TD subgraph Corp[&#34;企业本地网络&#34;] HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;] MBA[&#34;分公司A Melbourne&#34;] MBB[&#34;分公司B Brisbane&#34;] end HQ --&gt;|&#34;MPLS/VPN&#34;| MBA HQ --&gt;|&#34;MPLS/VPN&#34;| MBB HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;] subgraph AE[&#34;Azure Australia East&#34;] GW subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;] subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;] LB[&#34;Load Balancer&#34;] A1[&#34;APP1&#34;] A2[&#34;APP2&#34;] A3[&#34;APP3&#34;] end subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;] DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)] PE[&#34;Private Endpoint 10.0.2.10&#34;] end MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;] NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;] RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;] STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)] end end subgraph ASE[&#34;Azure Australia Southeast&#34;] DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;] end subgraph M365[&#34;M365 / 管理平面&#34;] EID[&#34;Entra ID &#43; MFA&lt;br/&gt;&#43; Conditional Access&#34;] AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;] SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;] end USER[&#34;Internet ↓443&#34;] --&gt; LB LB --&gt; A1 &amp; A2 &amp; A3 PVNet --&gt;|&#34;VNet Peering&#34;| DRV STG --&gt; PE AZMON -.-&gt; PVNet摘要 以&#34;总部（Sydney）&#43; 分公司 A（Melbourne）&#43; 分公司 B（Brisbane）MPLS/VPN 互联 &#43; Azure Australia East&#34;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。 VNet（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。 Subnet 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；NSG 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。 VPN Gateway 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；Route Table（UDR）控制&#34;去哪走&#34;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。 Private Endpoint &#43; Private DNS 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 companystorage.blob.core.windows.net 解析为 10.0.2.10，员工访问只能走企业网络。 双数据中心设计：主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。 技术要点 VNet 定义与作用：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。 Subnet 隔离：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。 NSG 规则设计：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。 Route Table (UDR)：告诉数据包&#34;去哪走&#34;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。 VPN Gateway 与 Hub-Spoke：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。 Private Endpoint 私网化：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。 Private DNS 配套机制：专门给 Private Endpoint 配套——Storage 公网域名 companystorage.blob.core.windows.net 通过 Private DNS 解析为 10.0.2.10，员工使用 https://companystorage.blob.core.windows.net 时自动变成 10.0.2.10 访问。 Load Balancer 高可用与扩展：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。 存储与双数据中心：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。 监控与零信任：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。 原文内容 这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="总部与数据中心的 Azure 架构（AZ-104 知识地图） 架构图 Copyflowchart TD subgraph Corp[&#34;企业本地网络&#34;] HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;] MBA[&#34;分公司A Melbourne&#34;] MBB[&#34;分公司B Brisbane&#34;] end HQ --&gt;|&#34;MPLS/VPN&#34;| MBA HQ --&gt;|&#34;MPLS/VPN&#34;| MBB HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;] subgraph AE[&#34;Azure Australia East&#34;] GW subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;] subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;] LB[&#34;Load Balancer&#34;] A1[&#34;APP1&#34;] A2[&#34;APP2&#34;] A3[&#34;APP3&#34;] end subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;] DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)] PE[&#34;Private Endpoint 10.0.2.10&#34;] end MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;] NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;] RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;] STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)] end end subgraph ASE[&#34;Azure Australia Southeast&#34;] DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;] end subgraph M365[&#34;M365 / 管理平面&#34;] EID[&#34;Entra ID &#43; MFA&lt;br/&gt;&#43; Conditional Access&#34;] AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;] SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;] end USER[&#34;Internet ↓443&#34;] --&gt; LB LB --&gt; A1 &amp; A2 &amp; A3 PVNet --&gt;|&#34;VNet Peering&#34;| DRV STG --&gt; PE AZMON -.-&gt; PVNet摘要 以&#34;总部（Sydney）&#43; 分公司 A（Melbourne）&#43; 分公司 B（Brisbane）MPLS/VPN 互联 &#43; Azure Australia East&#34;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。 VNet（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。 Subnet 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；NSG 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。 VPN Gateway 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；Route Table（UDR）控制&#34;去哪走&#34;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。 Private Endpoint &#43; Private DNS 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 companystorage.blob.core.windows.net 解析为 10.0.2.10，员工访问只能走企业网络。 双数据中心设计：主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。 技术要点 VNet 定义与作用：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。 Subnet 隔离：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。 NSG 规则设计：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。 Route Table (UDR)：告诉数据包&#34;去哪走&#34;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。 VPN Gateway 与 Hub-Spoke：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。 Private Endpoint 私网化：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。 Private DNS 配套机制：专门给 Private Endpoint 配套——Storage 公网域名 companystorage.blob.core.windows.net 通过 Private DNS 解析为 10.0.2.10，员工使用 https://companystorage.blob.core.windows.net 时自动变成 10.0.2.10 访问。 Load Balancer 高可用与扩展：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。 存储与双数据中心：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。 监控与零信任：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。 原文内容 这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。">
+	<meta itemprop="wordCount" content="756">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="总部与数据中心的 Azure 架构（AZ-104 知识地图） 架构图 Copyflowchart TD subgraph Corp[&#34;企业本地网络&#34;] HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;] MBA[&#34;分公司A Melbourne&#34;] MBB[&#34;分公司B Brisbane&#34;] end HQ --&gt;|&#34;MPLS/VPN&#34;| MBA HQ --&gt;|&#34;MPLS/VPN&#34;| MBB HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;] subgraph AE[&#34;Azure Australia East&#34;] GW subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;] subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;] LB[&#34;Load Balancer&#34;] A1[&#34;APP1&#34;] A2[&#34;APP2&#34;] A3[&#34;APP3&#34;] end subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;] DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)] PE[&#34;Private Endpoint 10.0.2.10&#34;] end MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;] NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;] RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;] STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)] end end subgraph ASE[&#34;Azure Australia Southeast&#34;] DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;] end subgraph M365[&#34;M365 / 管理平面&#34;] EID[&#34;Entra ID &#43; MFA&lt;br/&gt;&#43; Conditional Access&#34;] AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;] SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;] end USER[&#34;Internet ↓443&#34;] --&gt; LB LB --&gt; A1 &amp; A2 &amp; A3 PVNet --&gt;|&#34;VNet Peering&#34;| DRV STG --&gt; PE AZMON -.-&gt; PVNet摘要 以&#34;总部（Sydney）&#43; 分公司 A（Melbourne）&#43; 分公司 B（Brisbane）MPLS/VPN 互联 &#43; Azure Australia East&#34;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。 VNet（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。 Subnet 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；NSG 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。 VPN Gateway 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；Route Table（UDR）控制&#34;去哪走&#34;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。 Private Endpoint &#43; Private DNS 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 companystorage.blob.core.windows.net 解析为 10.0.2.10，员工访问只能走企业网络。 双数据中心设计：主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。 技术要点 VNet 定义与作用：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。 Subnet 隔离：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。 NSG 规则设计：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。 Route Table (UDR)：告诉数据包&#34;去哪走&#34;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。 VPN Gateway 与 Hub-Spoke：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。 Private Endpoint 私网化：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。 Private DNS 配套机制：专门给 Private Endpoint 配套——Storage 公网域名 companystorage.blob.core.windows.net 通过 Private DNS 解析为 10.0.2.10，员工使用 https://companystorage.blob.core.windows.net 时自动变成 10.0.2.10 访问。 Load Balancer 高可用与扩展：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。 存储与双数据中心：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）&#43; 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。 监控与零信任：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。 原文内容 这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-总部与数据中心的AZURE架构">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-总部与数据中心的AZURE架构 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="总部与数据中心的-azure-架构az-104-知识地图">总部与数据中心的 Azure 架构（AZ-104 知识地图）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Corp[&#34;企业本地网络&#34;]
+        HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;]
+        MBA[&#34;分公司A Melbourne&#34;]
+        MBB[&#34;分公司B Brisbane&#34;]
+    end
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBA
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBB
+    HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;]
+
+    subgraph AE[&#34;Azure Australia East&#34;]
+        GW
+        subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;]
+            subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;]
+                LB[&#34;Load Balancer&#34;]
+                A1[&#34;APP1&#34;]
+                A2[&#34;APP2&#34;]
+                A3[&#34;APP3&#34;]
+            end
+            subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;]
+                DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)]
+                PE[&#34;Private Endpoint 10.0.2.10&#34;]
+            end
+            MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;]
+            NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;]
+            RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;]
+            STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)]
+        end
+    end
+
+    subgraph ASE[&#34;Azure Australia Southeast&#34;]
+        DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;]
+    end
+
+    subgraph M365[&#34;M365 / 管理平面&#34;]
+        EID[&#34;Entra ID + MFA&lt;br/&gt;+ Conditional Access&#34;]
+        AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;]
+        SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;]
+    end
+
+    USER[&#34;Internet ↓443&#34;] --&gt; LB
+    LB --&gt; A1 &amp; A2 &amp; A3
+    PVNet --&gt;|&#34;VNet Peering&#34;| DRV
+    STG --&gt; PE
+    AZMON -.-&gt; PVNet</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>以&quot;总部（Sydney）+ 分公司 A（Melbourne）+ 分公司 B（Brisbane）MPLS/VPN 互联 + Azure Australia East&quot;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。</li>
+<li><strong>VNet</strong>（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。</li>
+<li><strong>Subnet</strong> 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；<strong>NSG</strong> 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。</li>
+<li><strong>VPN Gateway</strong> 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；<strong>Route Table</strong>（UDR）控制&quot;去哪走&quot;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。</li>
+<li><strong>Private Endpoint + Private DNS</strong> 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 <code>companystorage.blob.core.windows.net</code> 解析为 10.0.2.10，员工访问只能走企业网络。</li>
+<li><strong>双数据中心设计</strong>：主站 Australia East（Production）+ 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>VNet 定义与作用</strong>：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。</li>
+<li><strong>Subnet 隔离</strong>：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。</li>
+<li><strong>NSG 规则设计</strong>：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。</li>
+<li><strong>Route Table (UDR)</strong>：告诉数据包&quot;去哪走&quot;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。</li>
+<li><strong>VPN Gateway 与 Hub-Spoke</strong>：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。</li>
+<li><strong>Private Endpoint 私网化</strong>：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。</li>
+<li><strong>Private DNS 配套机制</strong>：专门给 Private Endpoint 配套——Storage 公网域名 <code>companystorage.blob.core.windows.net</code> 通过 Private DNS 解析为 10.0.2.10，员工使用 <code>https://companystorage.blob.core.windows.net</code> 时自动变成 10.0.2.10 访问。</li>
+<li><strong>Load Balancer 高可用与扩展</strong>：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。</li>
+<li><strong>存储与双数据中心</strong>：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）+ 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。</li>
+<li><strong>监控与零信任</strong>：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。</p>
+<h3 id="一企业场景架构">一、企业场景架构</h3>
+<p>假设：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>总部（Sydney）
+    |
+    | MPLS/VPN
+    |
+分公司A（Melbourne）
+    |
+    | MPLS/VPN
+    |
+分公司B（Brisbane）
+
+            |
+     Azure Australia East
+            |
+ ┌──────────────────────────┐
+ │      Production VNet     │
+ └──────────────────────────┘
+
+            |
+        VNet Peering
+            |
+ ┌──────────────────────────┐
+ │      DR VNet             │
+ │ (Australia Southeast)    │
+ └──────────────────────────┘
+
+            |
+       Azure Storage
+            |
+       Load Balancer
+            |
+      Application
+            |
+        Monitor
+            |
+         M365</code></pre>
+  </div><h3 id="二vnetvirtual-network">二、VNet（Virtual Network）</h3>
+<p><strong>定义</strong>：相当于 Azure 里的企业网络，类似总部网络（192.168.0.0/16）。在 Azure 中，Production-VNet（10.0.0.0/16）就是企业云上的网络。</p>
+<p><strong>作用</strong>：承载全部资源。你的企业 Azure 部分就需要 Production-VNet（Address Space: 10.0.0.0/16）作为核心云网络，承载 VM、Storage、Database、Private Endpoint、Load Balancer，连接总部、分公司与 Azure 云。</p>
+<h3 id="三subnet子网">三、Subnet（子网）</h3>
+<p><strong>定义</strong>：VNet 里的区域划分。就像总部网络划分服务器区、办公区、无线区、DMZ 区一样，Azure 把 VNet（10.0.0.0/16）拆分为 App-Subnet（10.0.1.0/24）、DB-Subnet（10.0.2.0/24）、Management-Subnet（10.0.3.0/24）。</p>
+<p>企业场景：App 服务器 10.0.1.x、数据库 10.0.2.x、监控服务器 10.0.3.x，实现隔离。</p>
+<h3 id="四nsgnetwork-security-group">四、NSG（Network Security Group）</h3>
+<p><strong>定义</strong>：Azure 防火墙规则。类似 Windows Firewall、Cisco ACL、Fortigate Policy。</p>
+<p>例子：你的应用服务器（App Server）只允许 HTTPS（443）访问。NSG 规则：</p>
+<ul>
+<li>Allow —— Source: Internet，Port: 443</li>
+<li>Deny —— 3389、Deny 22（互联网不能远程登录）</li>
+</ul>
+<p>这样：互联网 ↓443 → Web App，数据库 ↓ 仅允许 App 访问，非常符合安全要求。企业场景的网络安全依靠 NSG 实现。</p>
+<h3 id="五route-table路由表">五、Route Table（路由表）</h3>
+<p><strong>定义</strong>：告诉数据包&quot;去哪走&quot;。比如总部是 192.168.0.0/16，Azure 是 10.0.0.0/16。</p>
+<p>Route Table：Destination 192.168.1.0/24，Next Hop: VPN Gateway —— 意思是到总部网络走 VPN。</p>
+<p><strong>使用场景</strong>：你的应用（Azure VM）需要访问总部 ERP，就需要路由。</p>
+<h3 id="六vpn-gateway">六、VPN Gateway</h3>
+<p><strong>定义</strong>：Azure 与企业网络连接器，相当于云上的 VPN 设备。</p>
+<p>架构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>总部
+ |
+Fortigate
+ |
+Internet
+ |
+VPN
+ |
+Azure VPN Gateway</code></pre>
+  </div><p>企业形成 Site-to-Site VPN 后的效果：总部（192.168.1.x）可以访问 Azure VM（10.0.1.x）。三个分公司（Sydney、Melbourne、Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。</p>
+<h3 id="七private-endpoint">七、Private Endpoint</h3>
+<p><strong>定义</strong>：让 Azure 服务拥有内网 IP。</p>
+<p>例如 Azure Storage 默认是 Public Endpoint，任何互联网用户都有可能访问。改为 Private Endpoint（10.0.2.10）后，Storage Account 的访问方式变成只能走企业网络。</p>
+<p>你的企业建议：Storage、SQL、Key Vault 全部 Private Endpoint 私网化。</p>
+<h3 id="八private-dns">八、Private DNS</h3>
+<p><strong>定义</strong>：专门给 Private Endpoint 配套。</p>
+<p>例如 Storage 公网域名是 <code>companystorage.blob.core.windows.net</code>，Private Endpoint 化之后如何解析？Private DNS 让 <code>companystorage.blob.core.windows.net = 10.0.2.10</code>，员工使用 <code>https://companystorage.blob.core.windows.net</code> 时自动变成 10.0.2.10 访问。</p>
+<h3 id="九load-balancer">九、Load Balancer</h3>
+<p><strong>定义</strong>：负载均衡器。</p>
+<p>假设部署 APP1、APP2、APP3，1000 人同时访问。Load Balancer 自动分流：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>用户
+ |
+Load Balancer
+ |
+├── APP1
+├── APP2
+└── APP3</code></pre>
+  </div><p><strong>优点</strong></p>
+<ul>
+<li>高可用：APP1 宕机，APP2、APP3 继续提供服务。</li>
+<li>扩展能力：增加 APP4、APP5 即可横向扩容。</li>
+</ul>
+<h3 id="十云存储storage-account">十、云存储（Storage Account）</h3>
+<p>企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议使用 GRS（Geo-Redundant Storage）同步到第二数据中心。</p>
+<h3 id="十一双数据中心设计">十一、双数据中心设计</h3>
+<p>你的需求：两个数据中心、业务互通。推荐：主站 Australia East（Production），灾备站 Australia Southeast（DR），使用 VNet Peering 连接。</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Australia East
+    |
+    | VNet Peering
+    |
+Australia Southeast</code></pre>
+  </div><h3 id="十二azure-monitor云监控">十二、Azure Monitor（云监控）</h3>
+<p><strong>定义</strong>：Azure 的监控平台。</p>
+<ul>
+<li>监控：CPU、Memory、Storage、Network、Security Event、Application Log</li>
+<li>告警：CPU &gt; 80%、Storage &gt; 90%、VPN Down、VM Stopped</li>
+<li>发送：Email、Teams、Webhook</li>
+</ul>
+<p>企业中相当于 PRTG、Zabbix、SolarWinds 的功能。</p>
+<h3 id="十三一般安全策略">十三、一般安全策略</h3>
+<p>推荐零信任策略（Zero Trust）：</p>
+<ul>
+<li><strong>身份</strong>：M365（Entra ID、MFA、Conditional Access）</li>
+<li><strong>网络</strong>：VNet、Subnet、NSG、Private Endpoint</li>
+<li><strong>数据</strong>：Storage Encryption、Key Vault、Backup</li>
+<li><strong>运维</strong>：RBAC、PIM、Azure Policy、Defender for Cloud</li>
+</ul>
+<h3 id="十四对应到-az-104-的知识地图">十四、对应到 AZ-104 的知识地图</h3>
+<p>你这个企业场景其实对应了 AZ-104 大部分考点：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>总部/分公司互联 → VPN Gateway、Route Table
+云网络         → VNet、Subnet
+网络安全       → NSG
+云存储         → Storage Account、Private Endpoint、Private DNS
+应用高可用     → Load Balancer
+双数据中心     → VNet Peering
+系统监控       → Azure Monitor
+身份管理       → Entra ID、RBAC、MFA
+安全治理       → Policy、Defender、Backup</code></pre>
+  </div><p>核心知识清单：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Load Balancer、Azure Storage、Azure Monitor。</p>
+<p>对于你目前做 M365 和基础架构的背景来说，真正需要重点补课的就是这几个模块。把这几个模块学透，基本就具备了 AZ-104 的核心基础设施能力。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Cloudflare 免费发布域名托管
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph 域名注册商
+        REG[阿里云 / 腾讯云 / GoDaddy / Namecheap]
+    end
+    subgraph Cloudflare 免费版
+        NS1[Nameserver 1: ada.ns.cloudflare.com]
+        NS2[Nameserver 2: sam.ns.cloudflare.com]
+        DNS[免费 DNS 解析]
+        CDN[免费 CDN 加速]
+        SSL[免费 SSL/TLS 证书]
+        DDoS[基础 DDoS 防护]
+        PAGES[Cloudflare Pages 静态托管]
+    end
+    subgraph 代理模式
+        PROX[橙色云朵 Proxied - CDN&#43;防御]
+        DNSONLY[灰色云朵 DNS only - 仅解析]
+    end
+    USER[用户购买域名] --&gt; REG
+    REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1
+    REG --&gt; NS2
+    NS1 --&gt; DNS
+    NS2 --&gt; DNS
+    DNS --&gt; CDN
+    DNS --&gt; SSL
+    DNS --&gt; DDoS
+    DNS --&gt; PAGES
+    CDN --&gt; PROX
+    DNS --&gt; DNSONLY
+  摘要
+
+使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。
+托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。
+修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 &ldquo;Active&rdquo; 即代表托管成功。
+国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。
+橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。
+
+技术要点
+
+免费 DNS 解析：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。
+免费 CDN 加速：自动缓存静态资源，提升网站访问速度并节省服务器流量。
+免费 SSL/TLS 证书：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。
+Cloudflare Pages：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。
+NS 服务器修改：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。
+Proxied vs DNS only：橙色云朵开启 Cloudflare 代理（CDN &#43; 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。
+国内备案注意：大陆境内服务器 &#43; 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。
+
+原文内容
+是的，使用 Cloudflare 来&quot;托管（解析）现有的域名&quot;是完全免费的。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/cloudflare%E5%85%8D%E8%B4%B9%E5%8F%91%E5%B8%83%E5%9F%9F%E5%90%8D%E6%89%98%E7%AE%A1/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/cloudflare%E5%85%8D%E8%B4%B9%E5%8F%91%E5%B8%83%E5%9F%9F%E5%90%8D%E6%89%98%E7%AE%A1/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Cloudflare 免费发布域名托管 架构图 Copygraph TD subgraph 域名注册商 REG[阿里云 / 腾讯云 / GoDaddy / Namecheap] end subgraph Cloudflare 免费版 NS1[Nameserver 1: ada.ns.cloudflare.com] NS2[Nameserver 2: sam.ns.cloudflare.com] DNS[免费 DNS 解析] CDN[免费 CDN 加速] SSL[免费 SSL/TLS 证书] DDoS[基础 DDoS 防护] PAGES[Cloudflare Pages 静态托管] end subgraph 代理模式 PROX[橙色云朵 Proxied - CDN&#43;防御] DNSONLY[灰色云朵 DNS only - 仅解析] end USER[用户购买域名] --&gt; REG REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1 REG --&gt; NS2 NS1 --&gt; DNS NS2 --&gt; DNS DNS --&gt; CDN DNS --&gt; SSL DNS --&gt; DDoS DNS --&gt; PAGES CDN --&gt; PROX DNS --&gt; DNSONLY摘要 使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。 托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。 修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 “Active” 即代表托管成功。 国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。 橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。 技术要点 免费 DNS 解析：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。 免费 CDN 加速：自动缓存静态资源，提升网站访问速度并节省服务器流量。 免费 SSL/TLS 证书：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。 Cloudflare Pages：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。 NS 服务器修改：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。 Proxied vs DNS only：橙色云朵开启 Cloudflare 代理（CDN &#43; 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。 国内备案注意：大陆境内服务器 &#43; 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。 原文内容 是的，使用 Cloudflare 来&#34;托管（解析）现有的域名&#34;是完全免费的。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Cloudflare 免费发布域名托管 架构图 Copygraph TD subgraph 域名注册商 REG[阿里云 / 腾讯云 / GoDaddy / Namecheap] end subgraph Cloudflare 免费版 NS1[Nameserver 1: ada.ns.cloudflare.com] NS2[Nameserver 2: sam.ns.cloudflare.com] DNS[免费 DNS 解析] CDN[免费 CDN 加速] SSL[免费 SSL/TLS 证书] DDoS[基础 DDoS 防护] PAGES[Cloudflare Pages 静态托管] end subgraph 代理模式 PROX[橙色云朵 Proxied - CDN&#43;防御] DNSONLY[灰色云朵 DNS only - 仅解析] end USER[用户购买域名] --&gt; REG REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1 REG --&gt; NS2 NS1 --&gt; DNS NS2 --&gt; DNS DNS --&gt; CDN DNS --&gt; SSL DNS --&gt; DDoS DNS --&gt; PAGES CDN --&gt; PROX DNS --&gt; DNSONLY摘要 使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。 托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。 修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 “Active” 即代表托管成功。 国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。 橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。 技术要点 免费 DNS 解析：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。 免费 CDN 加速：自动缓存静态资源，提升网站访问速度并节省服务器流量。 免费 SSL/TLS 证书：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。 Cloudflare Pages：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。 NS 服务器修改：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。 Proxied vs DNS only：橙色云朵开启 Cloudflare 代理（CDN &#43; 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。 国内备案注意：大陆境内服务器 &#43; 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。 原文内容 是的，使用 Cloudflare 来&#34;托管（解析）现有的域名&#34;是完全免费的。">
+	<meta itemprop="wordCount" content="323">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Cloudflare 免费发布域名托管 架构图 Copygraph TD subgraph 域名注册商 REG[阿里云 / 腾讯云 / GoDaddy / Namecheap] end subgraph Cloudflare 免费版 NS1[Nameserver 1: ada.ns.cloudflare.com] NS2[Nameserver 2: sam.ns.cloudflare.com] DNS[免费 DNS 解析] CDN[免费 CDN 加速] SSL[免费 SSL/TLS 证书] DDoS[基础 DDoS 防护] PAGES[Cloudflare Pages 静态托管] end subgraph 代理模式 PROX[橙色云朵 Proxied - CDN&#43;防御] DNSONLY[灰色云朵 DNS only - 仅解析] end USER[用户购买域名] --&gt; REG REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1 REG --&gt; NS2 NS1 --&gt; DNS NS2 --&gt; DNS DNS --&gt; CDN DNS --&gt; SSL DNS --&gt; DDoS DNS --&gt; PAGES CDN --&gt; PROX DNS --&gt; DNSONLY摘要 使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。 托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。 修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 “Active” 即代表托管成功。 国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。 橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。 技术要点 免费 DNS 解析：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。 免费 CDN 加速：自动缓存静态资源，提升网站访问速度并节省服务器流量。 免费 SSL/TLS 证书：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。 Cloudflare Pages：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。 NS 服务器修改：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。 Proxied vs DNS only：橙色云朵开启 Cloudflare 代理（CDN &#43; 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。 国内备案注意：大陆境内服务器 &#43; 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。 原文内容 是的，使用 Cloudflare 来&#34;托管（解析）现有的域名&#34;是完全免费的。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-cloudflare免费发布域名托管">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-cloudflare免费发布域名托管 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="cloudflare-免费发布域名托管">Cloudflare 免费发布域名托管</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 域名注册商
+        REG[阿里云 / 腾讯云 / GoDaddy / Namecheap]
+    end
+    subgraph Cloudflare 免费版
+        NS1[Nameserver 1: ada.ns.cloudflare.com]
+        NS2[Nameserver 2: sam.ns.cloudflare.com]
+        DNS[免费 DNS 解析]
+        CDN[免费 CDN 加速]
+        SSL[免费 SSL/TLS 证书]
+        DDoS[基础 DDoS 防护]
+        PAGES[Cloudflare Pages 静态托管]
+    end
+    subgraph 代理模式
+        PROX[橙色云朵 Proxied - CDN+防御]
+        DNSONLY[灰色云朵 DNS only - 仅解析]
+    end
+    USER[用户购买域名] --&gt; REG
+    REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1
+    REG --&gt; NS2
+    NS1 --&gt; DNS
+    NS2 --&gt; DNS
+    DNS --&gt; CDN
+    DNS --&gt; SSL
+    DNS --&gt; DDoS
+    DNS --&gt; PAGES
+    CDN --&gt; PROX
+    DNS --&gt; DNSONLY</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。</li>
+<li>托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。</li>
+<li>修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 &ldquo;Active&rdquo; 即代表托管成功。</li>
+<li>国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。</li>
+<li>橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>免费 DNS 解析</strong>：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。</li>
+<li><strong>免费 CDN 加速</strong>：自动缓存静态资源，提升网站访问速度并节省服务器流量。</li>
+<li><strong>免费 SSL/TLS 证书</strong>：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。</li>
+<li><strong>Cloudflare Pages</strong>：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。</li>
+<li><strong>NS 服务器修改</strong>：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。</li>
+<li><strong>Proxied vs DNS only</strong>：橙色云朵开启 Cloudflare 代理（CDN + 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。</li>
+<li><strong>国内备案注意</strong>：大陆境内服务器 + 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>是的，使用 Cloudflare 来&quot;托管（解析）现有的域名&quot;是完全免费的。</p>
+<p>许多开发者和企业都在使用 Cloudflare 的免费版（Free Plan）来托管域名的 DNS、加速网站以及开启免费的 HTTPS 保护。</p>
+<p>以下是具体的托管机制和操作流程：</p>
+<h2 id="1-免费托管包含哪些功能">1. 免费托管包含哪些功能？</h2>
+<p>把域名托管到 Cloudflare 的免费版，你可以获得：</p>
+<ul>
+<li><strong>免费 DNS 解析</strong>：全球顶级且极速的权威 DNS 解析服务（修改记录实时生效）。</li>
+<li><strong>免费 CDN 加速</strong>：自动缓存静态资源，提升网站访问速度并节省服务器流量。</li>
+<li><strong>免费 SSL/TLS 证书</strong>：自动为你的域名签发和续期 SSL 证书，一键开启全站 HTTPS。</li>
+<li><strong>基础 DDoS 防护</strong>：自动拦截常见的网络攻击、恶意爬虫和流量冲击。</li>
+<li><strong>免费网页服务 (Cloudflare Pages)</strong>：如果你是静态网站（如 Hexo、Hugo、Vue/React 前端），可以直接免费部署在 Cloudflare Pages 上，连服务器费用都省了。</li>
+</ul>
+<h2 id="2-域名托管到-cloudflare-的标准步骤">2. 域名托管到 Cloudflare 的标准步骤</h2>
+<blockquote>
+<p>⚠️ <strong>前提条件</strong>：你需要在任意域名注册商（如阿里云、腾讯云、GoDaddy、Namecheap 等）处已经拥有一个域名。</p>
+</blockquote>
+<h3 id="步骤一添加域名到-cloudflare">步骤一：添加域名到 Cloudflare</h3>
+<ol>
+<li>注册并登录 Cloudflare 官网。</li>
+<li>点击右上角 &ldquo;添加站点&rdquo; (Add a site)。</li>
+<li>输入你的根域名（例如 <code>example.com</code>），点击继续。</li>
+<li>选择 Free (免费版) 计划并确认。</li>
+</ol>
+<h3 id="步骤二扫描与确认-dns-记录">步骤二：扫描与确认 DNS 记录</h3>
+<ol>
+<li>Cloudflare 会自动扫描你域名现有的 DNS 记录（如 A 记录、CNAME 记录等）。</li>
+<li>检查列表无误后，点击继续。</li>
+</ol>
+<h3 id="步骤三修改域名的-dns-服务器ns-地址">步骤三：修改域名的 DNS 服务器（NS 地址）</h3>
+<p>Cloudflare 会提供两条专属于你的 Nameservers（NS 地址），形如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>ada.ns.cloudflare.com
+sam.ns.cloudflare.com</code></pre>
+  </div><ol>
+<li>登录你购买域名的平台（如阿里云/腾讯云的域名控制台）。</li>
+<li>找到该域名的 &ldquo;修改 DNS 服务器 / 修改 DNS/NS&rdquo; 选项。</li>
+<li>将原本默认的 DNS 服务器清空，替换为 Cloudflare 给你的这两条 NS 地址并保存。</li>
+</ol>
+<h3 id="步骤四等待生效">步骤四：等待生效</h3>
+<p>修改 NS 地址后，通常需要 5 分钟至几小时不等（全球 DNS 生效时间）。</p>
+<p>待 Cloudflare 后台显示 &ldquo;Active&rdquo;（已激活），即代表域名托管成功！</p>
+<h2 id="3-注意事项与常见坑点">3. 注意事项与常见坑点</h2>
+<h3 id="国内已备案域名的注意点">国内已备案域名的注意点</h3>
+<ul>
+<li>如果你的网站托管在中国大陆境内的服务器上且使用了国内 CDN，将 DNS 改为 Cloudflare 可能会导致访问走海外节点或影响国内备案接入。</li>
+<li>如果服务器在中国香港或海外地区，接入 Cloudflare 则完全没有限制。</li>
+</ul>
+<h3 id="小黄橘云proxy开关">小黄橘云（Proxy）开关</h3>
+<ul>
+<li>在 Cloudflare 解析记录中，<strong>橙色云朵（Proxied）</strong> 表示流量通过 Cloudflare 代理并提供免费 CDN 和防御；</li>
+<li><strong>灰色云朵（DNS only）</strong> 则仅作为普通 DNS 解析，不经过 Cloudflare 服务器。</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

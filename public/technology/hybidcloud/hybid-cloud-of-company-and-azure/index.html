@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="企业网络与 Azure 混合云网络（Hub-Spoke &#43; VPN Gateway &#43; Private Endpoint）
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;]
+        HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;]
+        BRA[&#34;Branch A 192.168.2.0/24&#34;]
+        BRB[&#34;Branch B 192.168.3.0/24&#34;]
+    end
+
+    FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;]
+    HQ &amp; BRA &amp; BRB --&gt; FG
+
+    INET[&#34;Internet&#34;]
+
+    subgraph Azure[&#34;Azure (Australia East)&#34;]
+        GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;]
+        subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;]
+            GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;]
+            FW2[&#34;Azure Firewall&#34;]
+            MGMT[&#34;管理服务&#34;]
+        end
+        subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;]
+            APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;]
+            DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;]
+            MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;]
+            STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;]
+        end
+        DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;]
+    end
+
+    FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET
+    INET --&gt; GW
+    GW --&gt; Hub
+    Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR
+    DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG
+    APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;]
+
+    subgraph M365[&#34;M365 管理平面&#34;]
+        ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;]
+        MONA[&#34;Azure Monitor&#34;]
+        DEF[&#34;Defender for Cloud&#34;]
+    end
+  摘要
+
+核心结论：Azure 生产网段不需要配置公网 IP——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。
+整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。
+三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。
+VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。
+Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。
+安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID &#43; MFA &#43; Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 &#43; 企业基础架构 &#43; Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。
+
+技术要点
+
+生产网段无私网公网 IP 原则：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。
+GatewaySubnet 命名硬性要求：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 GatewaySubnet，否则 VPN Gateway 无法部署。
+Azure VPN Gateway 本质：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。
+Local Network Gateway 作用：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&quot;192 网段在这个设备后面&quot;。
+Connection 与预共享密钥：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。
+Fortigate IPSec 配置：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。
+双端路由配置：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。
+云存储私网化：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。
+分层安全策略：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。
+知识点覆盖：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。
+
+原文内容
+你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/hybidcloud/hybid-cloud-of-company-and-azure/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/hybidcloud/hybid-cloud-of-company-and-azure/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="企业网络与 Azure 混合云网络（Hub-Spoke &#43; VPN Gateway &#43; Private Endpoint） 架构图 Copyflowchart TD subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;] HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;] BRA[&#34;Branch A 192.168.2.0/24&#34;] BRB[&#34;Branch B 192.168.3.0/24&#34;] end FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;] HQ &amp; BRA &amp; BRB --&gt; FG INET[&#34;Internet&#34;] subgraph Azure[&#34;Azure (Australia East)&#34;] GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;] subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;] GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;] FW2[&#34;Azure Firewall&#34;] MGMT[&#34;管理服务&#34;] end subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;] APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;] DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;] MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;] STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;] end DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;] end FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET INET --&gt; GW GW --&gt; Hub Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;] subgraph M365[&#34;M365 管理平面&#34;] ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;] MONA[&#34;Azure Monitor&#34;] DEF[&#34;Defender for Cloud&#34;] end摘要 核心结论：Azure 生产网段不需要配置公网 IP——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。 整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。 三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。 VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。 Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。 安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID &#43; MFA &#43; Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 &#43; 企业基础架构 &#43; Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。 技术要点 生产网段无私网公网 IP 原则：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。 GatewaySubnet 命名硬性要求：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 GatewaySubnet，否则 VPN Gateway 无法部署。 Azure VPN Gateway 本质：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。 Local Network Gateway 作用：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&#34;192 网段在这个设备后面&#34;。 Connection 与预共享密钥：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。 Fortigate IPSec 配置：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。 双端路由配置：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。 云存储私网化：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。 分层安全策略：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。 知识点覆盖：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。 原文内容 你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="企业网络与 Azure 混合云网络（Hub-Spoke &#43; VPN Gateway &#43; Private Endpoint） 架构图 Copyflowchart TD subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;] HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;] BRA[&#34;Branch A 192.168.2.0/24&#34;] BRB[&#34;Branch B 192.168.3.0/24&#34;] end FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;] HQ &amp; BRA &amp; BRB --&gt; FG INET[&#34;Internet&#34;] subgraph Azure[&#34;Azure (Australia East)&#34;] GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;] subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;] GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;] FW2[&#34;Azure Firewall&#34;] MGMT[&#34;管理服务&#34;] end subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;] APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;] DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;] MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;] STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;] end DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;] end FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET INET --&gt; GW GW --&gt; Hub Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;] subgraph M365[&#34;M365 管理平面&#34;] ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;] MONA[&#34;Azure Monitor&#34;] DEF[&#34;Defender for Cloud&#34;] end摘要 核心结论：Azure 生产网段不需要配置公网 IP——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。 整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。 三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。 VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。 Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。 安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID &#43; MFA &#43; Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 &#43; 企业基础架构 &#43; Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。 技术要点 生产网段无私网公网 IP 原则：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。 GatewaySubnet 命名硬性要求：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 GatewaySubnet，否则 VPN Gateway 无法部署。 Azure VPN Gateway 本质：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。 Local Network Gateway 作用：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&#34;192 网段在这个设备后面&#34;。 Connection 与预共享密钥：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。 Fortigate IPSec 配置：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。 双端路由配置：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。 云存储私网化：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。 分层安全策略：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。 知识点覆盖：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。 原文内容 你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。">
+	<meta itemprop="wordCount" content="737">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="企业网络与 Azure 混合云网络（Hub-Spoke &#43; VPN Gateway &#43; Private Endpoint） 架构图 Copyflowchart TD subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;] HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;] BRA[&#34;Branch A 192.168.2.0/24&#34;] BRB[&#34;Branch B 192.168.3.0/24&#34;] end FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;] HQ &amp; BRA &amp; BRB --&gt; FG INET[&#34;Internet&#34;] subgraph Azure[&#34;Azure (Australia East)&#34;] GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;] subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;] GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;] FW2[&#34;Azure Firewall&#34;] MGMT[&#34;管理服务&#34;] end subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;] APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;] DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;] MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;] STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;] end DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;] end FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET INET --&gt; GW GW --&gt; Hub Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;] subgraph M365[&#34;M365 管理平面&#34;] ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;] MONA[&#34;Azure Monitor&#34;] DEF[&#34;Defender for Cloud&#34;] end摘要 核心结论：Azure 生产网段不需要配置公网 IP——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。 整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。 三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。 VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。 Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。 安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID &#43; MFA &#43; Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 &#43; 企业基础架构 &#43; Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。 技术要点 生产网段无私网公网 IP 原则：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。 GatewaySubnet 命名硬性要求：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 GatewaySubnet，否则 VPN Gateway 无法部署。 Azure VPN Gateway 本质：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。 Local Network Gateway 作用：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&#34;192 网段在这个设备后面&#34;。 Connection 与预共享密钥：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。 Fortigate IPSec 配置：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。 双端路由配置：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。 云存储私网化：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。 分层安全策略：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。 知识点覆盖：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。 原文内容 你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-hybid cloud of company and Azure">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-hybid cloud of company and Azure flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="企业网络与-azure-混合云网络hub-spoke--vpn-gateway--private-endpoint">企业网络与 Azure 混合云网络（Hub-Spoke + VPN Gateway + Private Endpoint）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;]
+        HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;]
+        BRA[&#34;Branch A 192.168.2.0/24&#34;]
+        BRB[&#34;Branch B 192.168.3.0/24&#34;]
+    end
+
+    FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;]
+    HQ &amp; BRA &amp; BRB --&gt; FG
+
+    INET[&#34;Internet&#34;]
+
+    subgraph Azure[&#34;Azure (Australia East)&#34;]
+        GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;]
+        subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;]
+            GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;]
+            FW2[&#34;Azure Firewall&#34;]
+            MGMT[&#34;管理服务&#34;]
+        end
+        subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;]
+            APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;]
+            DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;]
+            MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;]
+            STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;]
+        end
+        DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;]
+    end
+
+    FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET
+    INET --&gt; GW
+    GW --&gt; Hub
+    Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR
+    DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG
+    APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;]
+
+    subgraph M365[&#34;M365 管理平面&#34;]
+        ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;]
+        MONA[&#34;Azure Monitor&#34;]
+        DEF[&#34;Defender for Cloud&#34;]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>核心结论：<strong>Azure 生产网段不需要配置公网 IP</strong>——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。</li>
+<li>整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。</li>
+<li>三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。</li>
+<li>VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。</li>
+<li>Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。</li>
+<li>安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID + MFA + Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 + 企业基础架构 + Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>生产网段无私网公网 IP 原则</strong>：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。</li>
+<li><strong>GatewaySubnet 命名硬性要求</strong>：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 <code>GatewaySubnet</code>，否则 VPN Gateway 无法部署。</li>
+<li><strong>Azure VPN Gateway 本质</strong>：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。</li>
+<li><strong>Local Network Gateway 作用</strong>：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&quot;192 网段在这个设备后面&quot;。</li>
+<li><strong>Connection 与预共享密钥</strong>：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。</li>
+<li><strong>Fortigate IPSec 配置</strong>：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。</li>
+<li><strong>双端路由配置</strong>：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。</li>
+<li><strong>云存储私网化</strong>：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。</li>
+<li><strong>分层安全策略</strong>：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。</li>
+<li><strong>知识点覆盖</strong>：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。</p>
+<p>对于你的问题，先给结论：</p>
+<p><strong>是否需要给 Azure 生产网段配置公网 IP？</strong></p>
+<p>答案：不需要。</p>
+<ul>
+<li>Azure 生产网段：完全可以是私网（10.x.x.x）。</li>
+<li>通过建立 Site-to-Site VPN 后，与企业网络（192.168.x.x）即可直接互访。</li>
+<li>业务服务器不需要公网 IP。</li>
+</ul>
+<h3 id="一整体系统架构">一、整体系统架构</h3>
+<p>假设：</p>
+<ul>
+<li>公网出口：110.x.x.x</li>
+<li>Fortigate：FGT100F</li>
+<li>Azure：Australia East</li>
+<li>生产环境：10.0.0.0/16</li>
+</ul>
+<p>架构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>                Internet
+                    │
+            Azure VPN Gateway
+                20.x.x.x
+                    │
+    ────────────────────────────────
+    Azure VNet 10.0.0.0/16
+    │
+    ├─App Subnet       10.0.1.0/24
+    ├─DB Subnet        10.0.2.0/24
+    ├─Monitor Subnet   10.0.3.0/24
+    └─GatewaySubnet    10.0.254.0/27
+    ────────────────────────────────
+                    │
+                IPSec
+                    │
+                Fortigate
+                110.x.x.x
+                    │
+    ────────────────────────────────
+    Corporate Network 192.168.0.0/16
+    ├─HQ        192.168.1.0/24
+    ├─Branch A  192.168.2.0/24
+    └─Branch B  192.168.3.0/24</code></pre>
+  </div><p>（Fortigate ↔ Internet ↔ Azure VPN Gateway）</p>
+<h3 id="二网络架构设计">二、网络架构设计</h3>
+<p>建议采用 Hub-Spoke 思路。</p>
+<p><strong>Azure Hub</strong>（VNet-HUB 10.0.0.0/16）：作用——VPN Gateway、Azure Firewall、管理服务。</p>
+<p><strong>Azure Production</strong>（VNet-PROD 10.1.0.0/16）：作用——应用、数据库、Storage。</p>
+<p><strong>Azure DR</strong>（VNet-DR 10.2.0.0/16）：作用——灾备中心。</p>
+<p>拓扑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Enterprise
+    │
+   VPN
+    │
+Hub VNet 10.0.0.0/16
+    │
+VNet Peering
+    │
+─────────────
+│             │
+PROD          DR
+10.1.0.0     10.2.0.0</code></pre>
+  </div><p>这是微软推荐架构。</p>
+<h3 id="三azure-网络配置">三、Azure 网络配置</h3>
+<p><strong>创建生产 VNet</strong></p>
+<ul>
+<li>VNet Name: VNet-PROD</li>
+<li>地址空间：10.1.0.0/16</li>
+<li>子网：App 10.1.1.0/24、DB 10.1.2.0/24、Management 10.1.3.0/24</li>
+</ul>
+<p><strong>创建 Hub VNet</strong></p>
+<ul>
+<li>VNet-HUB，地址：10.0.0.0/16</li>
+<li>VPN 专用子网：必须叫 <code>GatewaySubnet</code>，例如 10.0.254.0/27</li>
+<li>注意：名字必须是 GatewaySubnet，否则 VPN Gateway 无法部署。</li>
+</ul>
+<h3 id="四vpn-gateway-方案">四、VPN Gateway 方案</h3>
+<p>Azure VPN Gateway 实际上是 Azure 上的 VPN 设备，类似 Fortigate、Cisco、Palo Alto。VPN 类型为 Route-based。</p>
+<p><strong>组件 1：Virtual Network Gateway</strong></p>
+<ul>
+<li>创建于：VNet-HUB</li>
+<li>SKU：生产推荐 VpnGw2 或 VpnGw3</li>
+<li>公网 IP：Azure 自动分配，例如 20.70.100.10 —— 这就是 Azure VPN Gateway 公网地址。</li>
+</ul>
+<p><strong>组件 2：Local Network Gateway</strong></p>
+<ul>
+<li>代表：企业侧 Fortigate</li>
+<li>配置：Public IP 110.x.x.x</li>
+<li>地址空间：192.168.0.0/16</li>
+<li>意思：192 网段在这个设备后面。</li>
+</ul>
+<p><strong>组件 3：Connection</strong></p>
+<ul>
+<li>创建：Site-to-Site VPN（Azure VPN Gateway + Local Network Gateway）</li>
+<li>参数：配置预共享密钥（PSK，如 Azure@2026VPN!）</li>
+</ul>
+<h3 id="五fortigate-配置">五、Fortigate 配置</h3>
+<p>假设：</p>
+<ul>
+<li>WAN：110.x.x.x</li>
+<li>Azure：20.x.x.x</li>
+</ul>
+<p>需要配置：</p>
+<p><strong>Phase1（Authentication / IKE，推荐 IKEv2）</strong></p>
+<ul>
+<li>Remote Gateway: 20.x.x.x</li>
+<li>PSK: Azure@2026VPN!</li>
+</ul>
+<p><strong>Phase2</strong></p>
+<ul>
+<li>本地网段：192.168.0.0/16</li>
+<li>远程：10.0.0.0/8（或者精确列出 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）</li>
+</ul>
+<h3 id="六路由配置">六、路由配置</h3>
+<ul>
+<li>企业侧：新增静态路由——Destination 10.0.0.0/8，Interface: Azure VPN。</li>
+<li>Azure 侧：自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway。</li>
+<li>最终通信：PC 192.168.1.50 ↓ Fortigate ↓ VPN Tunnel ↓ Azure 10.1.1.10，实现互通。</li>
+</ul>
+<h3 id="七生产服务器是否配置公网-ip">七、生产服务器是否配置公网 IP</h3>
+<p>推荐：不要配置。</p>
+<ul>
+<li>生产 VM：全部私网（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）。</li>
+<li>外部用户访问：Internet ↓ Application Gateway ↓ Load Balancer ↓ APP01 / APP02。</li>
+</ul>
+<h3 id="八云存储配置">八、云存储配置</h3>
+<p>Storage Account：</p>
+<ul>
+<li>名称如 stcompanyprod001</li>
+<li>关闭公网访问：Public Access = Disabled</li>
+<li>创建 Private Endpoint，IP：10.1.2.20</li>
+</ul>
+<p>这样：总部 192.168.x.x ↓ VPN ↓ Storage 10.1.2.20，直接访问。</p>
+<h3 id="九安全策略">九、安全策略</h3>
+<p>建议：</p>
+<ul>
+<li><strong>网络</strong>：VPN Gateway、NSG、Private Endpoint</li>
+<li><strong>身份</strong>：Entra ID、MFA、Conditional Access</li>
+<li><strong>权限</strong>：RBAC（Owner、Contributor、Reader）</li>
+<li><strong>云安全</strong>：Defender for Cloud</li>
+<li><strong>运维</strong>：Azure Bastion 代替 3389 / 22 端口开放到互联网</li>
+</ul>
+<h3 id="十最终推荐生产架构">十、最终推荐生产架构</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>HQ + Branches 192.168.0.0/16
+        │
+    Fortigate 110.x.x.x
+        │
+    IPSec VPN
+        │
+Azure VPN Gateway
+        │
+    Hub VNet 10.0.0.0/16
+        │
+    VNet Peering
+        │
+  ┌────┴─────┐
+  │          │
+Prod VNet   DR VNet
+10.1.0.0/16 10.2.0.0/16
+  │
+  ├─APP
+  ├─DB
+  ├─Storage (Private Endpoint)
+  └─Monitor
+
+M365: Entra ID、Azure Monitor、Defender for Cloud</code></pre>
+  </div><p>对于你这种 M365 + 企业基础架构 + Azure 云平台的场景，这已经是中大型企业常见的 Hybrid Cloud 标准架构，同时也覆盖了 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="带压缩的 MySQL 备份与恢复
+架构图
+
+    
+      Copy
+    
+    flowchart TB
+    subgraph 备份流程[&#34;备份流程（逻辑备份 &#43; 管道压缩）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;]
+        B --&gt; C{&#34;压缩工具选择&#34;}
+        C --&gt;|标准| D[&#34;gzip&#34;]
+        C --&gt;|高压缩率| E[&#34;xz -9&#34;]
+        C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;]
+        D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)]
+        E --&gt; H[(&#34;mydb.sql.xz&#34;)]
+        F --&gt; G
+    end
+
+    subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;]
+        G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;]
+        H --&gt; J[&#34;xzcat&#34;]
+        I --&gt; K[&#34;mysql -u root -p mydb&#34;]
+        J --&gt; K
+        K --&gt; L[(&#34;✅ 数据恢复完成&#34;)]
+    end
+
+    subgraph 检查操作[&#34;备份文件检查&#34;]
+        G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;]
+        G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;]
+    end
+  摘要
+
+mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件
+支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip）
+恢复时用 gunzip &lt;、xzcat、pigz -dc 流式解压直接管道给 mysql，同样不产生中间文件
+生产环境推荐参数组合：--single-transaction --routines --triggers --events
+备份文件建议带时间戳命名（$(date &#43;%Y%m%d_%H%M%S)），便于管理和追溯
+可用 zcat | head、zcat | wc -l、ls -lh 不解压检查压缩包内容和大小
+
+技术要点
+
+单库 gzip 备份：mysqldump -u root -p mydb | gzip &gt; mydb_$(date &#43;%F).sql.gz，导出流直接进 gzip
+对应恢复：gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb，解压流直接进 mysql
+全库备份：--all-databases 备份所有数据库，恢复时不需要指定库名
+xz -9 高压缩率：适合存储空间紧张的归档场景，恢复用 xzcat mydb.sql.xz | mysql
+pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备份、pigz -dc 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用
+--single-transaction：InnoDB 热备份，不锁表
+--routines / --triggers / --events：确保存储过程、函数、触发器、事件完整备份
+时间戳命名：$(date &#43;%Y%m%d_%H%M%S) 生成如 mydb_20260806_164500.sql.gz 的文件名
+不解压检查：zcat mydb.sql.gz | head 查看内容，zcat | wc -l 统计行数，ls -lh 查看文件大小
+标准做法：mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz 是生产环境逻辑备份的标准做法
+
+原文内容
+常用的 mysqldump 备份并压缩命令如下。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/mysql/mysql-back-resotre-with-zip/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/mysql/mysql-back-resotre-with-zip/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="带压缩的 MySQL 备份与恢复 架构图 Copyflowchart TB subgraph 备份流程[&#34;备份流程（逻辑备份 &#43; 管道压缩）&#34;] A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;] B --&gt; C{&#34;压缩工具选择&#34;} C --&gt;|标准| D[&#34;gzip&#34;] C --&gt;|高压缩率| E[&#34;xz -9&#34;] C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;] D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)] E --&gt; H[(&#34;mydb.sql.xz&#34;)] F --&gt; G end subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;] G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;] H --&gt; J[&#34;xzcat&#34;] I --&gt; K[&#34;mysql -u root -p mydb&#34;] J --&gt; K K --&gt; L[(&#34;✅ 数据恢复完成&#34;)] end subgraph 检查操作[&#34;备份文件检查&#34;] G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;] G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;] end摘要 mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件 支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip） 恢复时用 gunzip &lt;、xzcat、pigz -dc 流式解压直接管道给 mysql，同样不产生中间文件 生产环境推荐参数组合：--single-transaction --routines --triggers --events 备份文件建议带时间戳命名（$(date &#43;%Y%m%d_%H%M%S)），便于管理和追溯 可用 zcat | head、zcat | wc -l、ls -lh 不解压检查压缩包内容和大小 技术要点 单库 gzip 备份：mysqldump -u root -p mydb | gzip &gt; mydb_$(date &#43;%F).sql.gz，导出流直接进 gzip 对应恢复：gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb，解压流直接进 mysql 全库备份：--all-databases 备份所有数据库，恢复时不需要指定库名 xz -9 高压缩率：适合存储空间紧张的归档场景，恢复用 xzcat mydb.sql.xz | mysql pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备份、pigz -dc 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用 --single-transaction：InnoDB 热备份，不锁表 --routines / --triggers / --events：确保存储过程、函数、触发器、事件完整备份 时间戳命名：$(date &#43;%Y%m%d_%H%M%S) 生成如 mydb_20260806_164500.sql.gz 的文件名 不解压检查：zcat mydb.sql.gz | head 查看内容，zcat | wc -l 统计行数，ls -lh 查看文件大小 标准做法：mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz 是生产环境逻辑备份的标准做法 原文内容 常用的 mysqldump 备份并压缩命令如下。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="带压缩的 MySQL 备份与恢复 架构图 Copyflowchart TB subgraph 备份流程[&#34;备份流程（逻辑备份 &#43; 管道压缩）&#34;] A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;] B --&gt; C{&#34;压缩工具选择&#34;} C --&gt;|标准| D[&#34;gzip&#34;] C --&gt;|高压缩率| E[&#34;xz -9&#34;] C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;] D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)] E --&gt; H[(&#34;mydb.sql.xz&#34;)] F --&gt; G end subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;] G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;] H --&gt; J[&#34;xzcat&#34;] I --&gt; K[&#34;mysql -u root -p mydb&#34;] J --&gt; K K --&gt; L[(&#34;✅ 数据恢复完成&#34;)] end subgraph 检查操作[&#34;备份文件检查&#34;] G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;] G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;] end摘要 mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件 支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip） 恢复时用 gunzip &lt;、xzcat、pigz -dc 流式解压直接管道给 mysql，同样不产生中间文件 生产环境推荐参数组合：--single-transaction --routines --triggers --events 备份文件建议带时间戳命名（$(date &#43;%Y%m%d_%H%M%S)），便于管理和追溯 可用 zcat | head、zcat | wc -l、ls -lh 不解压检查压缩包内容和大小 技术要点 单库 gzip 备份：mysqldump -u root -p mydb | gzip &gt; mydb_$(date &#43;%F).sql.gz，导出流直接进 gzip 对应恢复：gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb，解压流直接进 mysql 全库备份：--all-databases 备份所有数据库，恢复时不需要指定库名 xz -9 高压缩率：适合存储空间紧张的归档场景，恢复用 xzcat mydb.sql.xz | mysql pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备份、pigz -dc 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用 --single-transaction：InnoDB 热备份，不锁表 --routines / --triggers / --events：确保存储过程、函数、触发器、事件完整备份 时间戳命名：$(date &#43;%Y%m%d_%H%M%S) 生成如 mydb_20260806_164500.sql.gz 的文件名 不解压检查：zcat mydb.sql.gz | head 查看内容，zcat | wc -l 统计行数，ls -lh 查看文件大小 标准做法：mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz 是生产环境逻辑备份的标准做法 原文内容 常用的 mysqldump 备份并压缩命令如下。">
+	<meta itemprop="wordCount" content="400">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="带压缩的 MySQL 备份与恢复 架构图 Copyflowchart TB subgraph 备份流程[&#34;备份流程（逻辑备份 &#43; 管道压缩）&#34;] A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;] B --&gt; C{&#34;压缩工具选择&#34;} C --&gt;|标准| D[&#34;gzip&#34;] C --&gt;|高压缩率| E[&#34;xz -9&#34;] C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;] D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)] E --&gt; H[(&#34;mydb.sql.xz&#34;)] F --&gt; G end subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;] G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;] H --&gt; J[&#34;xzcat&#34;] I --&gt; K[&#34;mysql -u root -p mydb&#34;] J --&gt; K K --&gt; L[(&#34;✅ 数据恢复完成&#34;)] end subgraph 检查操作[&#34;备份文件检查&#34;] G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;] G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;] end摘要 mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件 支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip） 恢复时用 gunzip &lt;、xzcat、pigz -dc 流式解压直接管道给 mysql，同样不产生中间文件 生产环境推荐参数组合：--single-transaction --routines --triggers --events 备份文件建议带时间戳命名（$(date &#43;%Y%m%d_%H%M%S)），便于管理和追溯 可用 zcat | head、zcat | wc -l、ls -lh 不解压检查压缩包内容和大小 技术要点 单库 gzip 备份：mysqldump -u root -p mydb | gzip &gt; mydb_$(date &#43;%F).sql.gz，导出流直接进 gzip 对应恢复：gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb，解压流直接进 mysql 全库备份：--all-databases 备份所有数据库，恢复时不需要指定库名 xz -9 高压缩率：适合存储空间紧张的归档场景，恢复用 xzcat mydb.sql.xz | mysql pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备份、pigz -dc 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用 --single-transaction：InnoDB 热备份，不锁表 --routines / --triggers / --events：确保存储过程、函数、触发器、事件完整备份 时间戳命名：$(date &#43;%Y%m%d_%H%M%S) 生成如 mydb_20260806_164500.sql.gz 的文件名 不解压检查：zcat mydb.sql.gz | head 查看内容，zcat | wc -l 统计行数，ls -lh 查看文件大小 标准做法：mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz 是生产环境逻辑备份的标准做法 原文内容 常用的 mysqldump 备份并压缩命令如下。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-back-resotre-with-zip">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-mysql-back-resotre-with-zip flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="带压缩的-mysql-备份与恢复">带压缩的 MySQL 备份与恢复</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份流程[&#34;备份流程（逻辑备份 + 管道压缩）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;]
+        B --&gt; C{&#34;压缩工具选择&#34;}
+        C --&gt;|标准| D[&#34;gzip&#34;]
+        C --&gt;|高压缩率| E[&#34;xz -9&#34;]
+        C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;]
+        D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)]
+        E --&gt; H[(&#34;mydb.sql.xz&#34;)]
+        F --&gt; G
+    end
+
+    subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;]
+        G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;]
+        H --&gt; J[&#34;xzcat&#34;]
+        I --&gt; K[&#34;mysql -u root -p mydb&#34;]
+        J --&gt; K
+        K --&gt; L[(&#34;✅ 数据恢复完成&#34;)]
+    end
+
+    subgraph 检查操作[&#34;备份文件检查&#34;]
+        G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;]
+        G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件</li>
+<li>支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip）</li>
+<li>恢复时用 <code>gunzip &lt;</code>、<code>xzcat</code>、<code>pigz -dc</code> 流式解压直接管道给 mysql，同样不产生中间文件</li>
+<li>生产环境推荐参数组合：<code>--single-transaction --routines --triggers --events</code></li>
+<li>备份文件建议带时间戳命名（<code>$(date +%Y%m%d_%H%M%S)</code>），便于管理和追溯</li>
+<li>可用 <code>zcat | head</code>、<code>zcat | wc -l</code>、<code>ls -lh</code> 不解压检查压缩包内容和大小</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>单库 gzip 备份</strong>：<code>mysqldump -u root -p mydb | gzip &gt; mydb_$(date +%F).sql.gz</code>，导出流直接进 gzip</li>
+<li><strong>对应恢复</strong>：<code>gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb</code>，解压流直接进 mysql</li>
+<li><strong>全库备份</strong>：<code>--all-databases</code> 备份所有数据库，恢复时不需要指定库名</li>
+<li><strong>xz -9 高压缩率</strong>：适合存储空间紧张的归档场景，恢复用 <code>xzcat mydb.sql.xz | mysql</code></li>
+<li><strong>pigz 多核压缩</strong>：<code>yum install pigz</code> 或 <code>apt install pigz</code> 安装，<code>pigz -9</code> 备份、<code>pigz -dc</code> 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用</li>
+<li><strong><code>--single-transaction</code></strong>：InnoDB 热备份，不锁表</li>
+<li><strong><code>--routines / --triggers / --events</code></strong>：确保存储过程、函数、触发器、事件完整备份</li>
+<li><strong>时间戳命名</strong>：<code>$(date +%Y%m%d_%H%M%S)</code> 生成如 <code>mydb_20260806_164500.sql.gz</code> 的文件名</li>
+<li><strong>不解压检查</strong>：<code>zcat mydb.sql.gz | head</code> 查看内容，<code>zcat | wc -l</code> 统计行数，<code>ls -lh</code> 查看文件大小</li>
+<li><strong>标准做法</strong>：<code>mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz</code> 是生产环境逻辑备份的标准做法</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>常用的 mysqldump 备份并压缩命令如下。</p>
+<h3 id="1-备份单个数据库并-gzip-压缩">1. 备份单个数据库并 gzip 压缩</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb | gzip &gt; mydb_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb</span></span></code></pre></div>
+  </div><h3 id="2-备份所有数据库并压缩">2. 备份所有数据库并压缩</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --all-databases | gzip &gt; all_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gunzip &lt; all_2026-08-06.sql.gz | mysql -u root -p</span></span></code></pre></div>
+  </div><h3 id="3-使用-xz-压缩压缩率更高">3. 使用 xz 压缩（压缩率更高）</h3>
+<p>备份：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb | xz -9 &gt; mydb.sql.xz</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>xzcat mydb.sql.xz | mysql -u root -p mydb</span></span></code></pre></div>
+  </div><h3 id="4-使用-pigz-多核压缩推荐大库">4. 使用 pigz 多核压缩（推荐大库）</h3>
+<p>安装：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>yum install pigz
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 或</span>
+</span></span><span style="display:flex;"><span>apt install pigz</span></span></code></pre></div>
+  </div><p>备份：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb | pigz -9 &gt; mydb.sql.gz</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>pigz -dc mydb.sql.gz | mysql -u root -p mydb</span></span></code></pre></div>
+  </div><p>相比 gzip，CPU 多核时速度明显更快。</p>
+<h3 id="5-生产环境推荐参数">5. 生产环境推荐参数</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -u root -p <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --routines <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --triggers <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --events <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mydb | gzip &gt; mydb_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>参数说明：</p>
+<ul>
+<li><code>--single-transaction</code>：InnoDB 热备份，不锁表</li>
+<li><code>--routines</code>：备份存储过程和函数</li>
+<li><code>--triggers</code>：备份触发器</li>
+<li><code>--events</code>：备份事件</li>
+</ul>
+<h3 id="6-带时间戳备份">6. 带时间戳备份</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p mydb | gzip &gt; /backup/mydb_<span style="color:#66d9ef">$(</span>date +%Y%m%d_%H%M%S<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>mydb_20260806_164500.sql.gz</code></pre>
+  </div><h3 id="7-查看压缩包内容">7. 查看压缩包内容</h3>
+<p>不解压查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>zcat mydb.sql.gz | head</span></span></code></pre></div>
+  </div><p>统计行数：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>zcat mydb.sql.gz | wc -l</span></span></code></pre></div>
+  </div><p>查看文件大小：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ls -lh mydb.sql.gz</span></span></code></pre></div>
+  </div><p>生产环境最常用的是：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz</span></span></code></pre></div>
+  </div><p>这是逻辑备份的标准做法。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

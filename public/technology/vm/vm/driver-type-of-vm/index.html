@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="虚机容器DRIVER的形式
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;]
+
+    BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;]
+    HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;]
+    NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;]
+    OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;]
+    MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;]
+    IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;]
+
+    DOCKER --&gt; BRIDGE
+    DOCKER --&gt; HOST
+    DOCKER --&gt; NONE
+    DOCKER --&gt; OVERLAY
+    DOCKER --&gt; MACVLAN
+    DOCKER --&gt; IPVLAN
+
+    subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;]
+        CALICO[&#34;Calico&#34;]
+        FLANNEL[&#34;Flannel&#34;]
+        WEAVE[&#34;Weave&#34;]
+        CILIUM[&#34;Cilium&#34;]
+        NSX[&#34;VMware NSX&#34;]
+    end
+    DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS
+
+    subgraph USAGE[&#34;生产环境选型&#34;]
+        U1[&#34;单机部署 → bridge&#34;]
+        U2[&#34;需要容器真实局域网IP → macvlan&#34;]
+        U3[&#34;Docker Swarm 集群 → overlay&#34;]
+        U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;]
+    end
+    BRIDGE --&gt; U1
+    MACVLAN --&gt; U2
+    OVERLAY --&gt; U3
+    PLUGINS --&gt; U4
+
+    subgraph BSC[&#34;bridge 网络示意&#34;]
+        CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;]
+        D0 --- HOSTS[&#34;Host&#34;]
+    end
+    BRIDGE --&gt; BSC
+
+    subgraph OVSC[&#34;overlay 网络示意&#34;]
+        N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;]
+    end
+    OVERLAY --&gt; OVSC
+  摘要
+
+Docker 中 docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。
+查看当前 Docker 支持的驱动：docker info 或 docker network ls，常见输出包含 bridge/host/none（null）/ingress（overlay）。
+bridge（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。
+host：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（docker run --network host nginx 等同于在宿主机直接监听 Host:80）。
+macvlan：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；ipvlan 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。
+生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。
+
+技术要点
+
+驱动查看命令：
+
+    
+      Copy
+    
+    docker info
+docker network ls
+  常见输出：
+
+    
+      Copy
+    
+    NETWORK ID     NAME      DRIVER
+xxxx           bridge    bridge
+xxxx           host      host
+xxxx           none      null
+xxxx           ingress   overlay
+  
+bridge 创建与特点：docker network create --driver bridge my-net；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。
+host 驱动：docker run --network host nginx 直接监听 Host:80，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。
+none 驱动：docker run --network none nginx 后容器没有网卡（除了 lo），完全隔离；用 docker exec -it nginx ip addr 只能看到 lo；适合安全隔离和特殊网络配置。
+overlay 驱动：Swarm 集群专用，多节点通信基于 VXLAN 封装（Node1 容器A &lt;----VXLAN----&gt; Node2 容器B），创建命令：
+
+    
+      Copy
+    
+    docker network create \
+  --driver overlay \
+  my-overlay
+  
+macvlan 创建示例：容器直接使用物理网络、获得真实局域网 IP：
+
+    
+      Copy
+    
+    docker network create -d macvlan \
+  --subnet=192.168.1.0/24 \
+  --gateway=192.168.1.1 \
+  -o parent=eth0 \
+  macvlan-net
+
+docker run -it --network macvlan-net alpine
+  容器可能获得 192.168.1.100，与 192.168.1.101 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。
+ipvlan 创建示例：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境：
+
+    
+      Copy
+    
+    docker network create -d ipvlan \
+  --subnet=192.168.1.0/24 \
+  -o parent=eth0 \
+  ipvlan-net
+  
+第三方驱动插件机制：docker plugin ls 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如：
+
+    
+      Copy
+    
+    docker network create \
+  --driver calico \
+  calico-net
+  
+使用频率对照表：
+
+	
+			
+					Driver
+					使用频率
+					场景
+			
+	
+	
+			
+					bridge
+					★★★★★
+					单机容器
+			
+			
+					host
+					★★★★
+					高性能应用
+			
+			
+					macvlan
+					★★★★
+					容器直连物理网络
+			
+			
+					overlay
+					★★★
+					Swarm 集群
+			
+			
+					ipvlan
+					★★
+					大规模网络
+			
+			
+					none
+					★★
+					隔离环境
+			
+	
+
+
+
+原文内容
+在 Docker 中，docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/driver-type-of-vm/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/driver-type-of-vm/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="虚机容器DRIVER的形式 架构图 Copyflowchart TD DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;] BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;] HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;] NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;] OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;] MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;] IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;] DOCKER --&gt; BRIDGE DOCKER --&gt; HOST DOCKER --&gt; NONE DOCKER --&gt; OVERLAY DOCKER --&gt; MACVLAN DOCKER --&gt; IPVLAN subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;] CALICO[&#34;Calico&#34;] FLANNEL[&#34;Flannel&#34;] WEAVE[&#34;Weave&#34;] CILIUM[&#34;Cilium&#34;] NSX[&#34;VMware NSX&#34;] end DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS subgraph USAGE[&#34;生产环境选型&#34;] U1[&#34;单机部署 → bridge&#34;] U2[&#34;需要容器真实局域网IP → macvlan&#34;] U3[&#34;Docker Swarm 集群 → overlay&#34;] U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;] end BRIDGE --&gt; U1 MACVLAN --&gt; U2 OVERLAY --&gt; U3 PLUGINS --&gt; U4 subgraph BSC[&#34;bridge 网络示意&#34;] CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;] D0 --- HOSTS[&#34;Host&#34;] end BRIDGE --&gt; BSC subgraph OVSC[&#34;overlay 网络示意&#34;] N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;] end OVERLAY --&gt; OVSC摘要 Docker 中 docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。 查看当前 Docker 支持的驱动：docker info 或 docker network ls，常见输出包含 bridge/host/none（null）/ingress（overlay）。 bridge（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。 host：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（docker run --network host nginx 等同于在宿主机直接监听 Host:80）。 macvlan：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；ipvlan 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。 生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。 技术要点 驱动查看命令： Copydocker info docker network ls常见输出： CopyNETWORK ID NAME DRIVER xxxx bridge bridge xxxx host host xxxx none null xxxx ingress overlaybridge 创建与特点：docker network create --driver bridge my-net；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。 host 驱动：docker run --network host nginx 直接监听 Host:80，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。 none 驱动：docker run --network none nginx 后容器没有网卡（除了 lo），完全隔离；用 docker exec -it nginx ip addr 只能看到 lo；适合安全隔离和特殊网络配置。 overlay 驱动：Swarm 集群专用，多节点通信基于 VXLAN 封装（Node1 容器A &lt;----VXLAN----&gt; Node2 容器B），创建命令： Copydocker network create \ --driver overlay \ my-overlaymacvlan 创建示例：容器直接使用物理网络、获得真实局域网 IP： Copydocker network create -d macvlan \ --subnet=192.168.1.0/24 \ --gateway=192.168.1.1 \ -o parent=eth0 \ macvlan-net docker run -it --network macvlan-net alpine容器可能获得 192.168.1.100，与 192.168.1.101 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。 ipvlan 创建示例：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境： Copydocker network create -d ipvlan \ --subnet=192.168.1.0/24 \ -o parent=eth0 \ ipvlan-net第三方驱动插件机制：docker plugin ls 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如： Copydocker network create \ --driver calico \ calico-net使用频率对照表： Driver 使用频率 场景 bridge ★★★★★ 单机容器 host ★★★★ 高性能应用 macvlan ★★★★ 容器直连物理网络 overlay ★★★ Swarm 集群 ipvlan ★★ 大规模网络 none ★★ 隔离环境 原文内容 在 Docker 中，docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="虚机容器DRIVER的形式 架构图 Copyflowchart TD DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;] BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;] HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;] NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;] OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;] MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;] IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;] DOCKER --&gt; BRIDGE DOCKER --&gt; HOST DOCKER --&gt; NONE DOCKER --&gt; OVERLAY DOCKER --&gt; MACVLAN DOCKER --&gt; IPVLAN subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;] CALICO[&#34;Calico&#34;] FLANNEL[&#34;Flannel&#34;] WEAVE[&#34;Weave&#34;] CILIUM[&#34;Cilium&#34;] NSX[&#34;VMware NSX&#34;] end DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS subgraph USAGE[&#34;生产环境选型&#34;] U1[&#34;单机部署 → bridge&#34;] U2[&#34;需要容器真实局域网IP → macvlan&#34;] U3[&#34;Docker Swarm 集群 → overlay&#34;] U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;] end BRIDGE --&gt; U1 MACVLAN --&gt; U2 OVERLAY --&gt; U3 PLUGINS --&gt; U4 subgraph BSC[&#34;bridge 网络示意&#34;] CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;] D0 --- HOSTS[&#34;Host&#34;] end BRIDGE --&gt; BSC subgraph OVSC[&#34;overlay 网络示意&#34;] N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;] end OVERLAY --&gt; OVSC摘要 Docker 中 docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。 查看当前 Docker 支持的驱动：docker info 或 docker network ls，常见输出包含 bridge/host/none（null）/ingress（overlay）。 bridge（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。 host：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（docker run --network host nginx 等同于在宿主机直接监听 Host:80）。 macvlan：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；ipvlan 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。 生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。 技术要点 驱动查看命令： Copydocker info docker network ls常见输出： CopyNETWORK ID NAME DRIVER xxxx bridge bridge xxxx host host xxxx none null xxxx ingress overlaybridge 创建与特点：docker network create --driver bridge my-net；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。 host 驱动：docker run --network host nginx 直接监听 Host:80，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。 none 驱动：docker run --network none nginx 后容器没有网卡（除了 lo），完全隔离；用 docker exec -it nginx ip addr 只能看到 lo；适合安全隔离和特殊网络配置。 overlay 驱动：Swarm 集群专用，多节点通信基于 VXLAN 封装（Node1 容器A &lt;----VXLAN----&gt; Node2 容器B），创建命令： Copydocker network create \ --driver overlay \ my-overlaymacvlan 创建示例：容器直接使用物理网络、获得真实局域网 IP： Copydocker network create -d macvlan \ --subnet=192.168.1.0/24 \ --gateway=192.168.1.1 \ -o parent=eth0 \ macvlan-net docker run -it --network macvlan-net alpine容器可能获得 192.168.1.100，与 192.168.1.101 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。 ipvlan 创建示例：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境： Copydocker network create -d ipvlan \ --subnet=192.168.1.0/24 \ -o parent=eth0 \ ipvlan-net第三方驱动插件机制：docker plugin ls 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如： Copydocker network create \ --driver calico \ calico-net使用频率对照表： Driver 使用频率 场景 bridge ★★★★★ 单机容器 host ★★★★ 高性能应用 macvlan ★★★★ 容器直连物理网络 overlay ★★★ Swarm 集群 ipvlan ★★ 大规模网络 none ★★ 隔离环境 原文内容 在 Docker 中，docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver。">
+	<meta itemprop="wordCount" content="619">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="虚机容器DRIVER的形式 架构图 Copyflowchart TD DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;] BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;] HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;] NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;] OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;] MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;] IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;] DOCKER --&gt; BRIDGE DOCKER --&gt; HOST DOCKER --&gt; NONE DOCKER --&gt; OVERLAY DOCKER --&gt; MACVLAN DOCKER --&gt; IPVLAN subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;] CALICO[&#34;Calico&#34;] FLANNEL[&#34;Flannel&#34;] WEAVE[&#34;Weave&#34;] CILIUM[&#34;Cilium&#34;] NSX[&#34;VMware NSX&#34;] end DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS subgraph USAGE[&#34;生产环境选型&#34;] U1[&#34;单机部署 → bridge&#34;] U2[&#34;需要容器真实局域网IP → macvlan&#34;] U3[&#34;Docker Swarm 集群 → overlay&#34;] U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;] end BRIDGE --&gt; U1 MACVLAN --&gt; U2 OVERLAY --&gt; U3 PLUGINS --&gt; U4 subgraph BSC[&#34;bridge 网络示意&#34;] CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;] D0 --- HOSTS[&#34;Host&#34;] end BRIDGE --&gt; BSC subgraph OVSC[&#34;overlay 网络示意&#34;] N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;] end OVERLAY --&gt; OVSC摘要 Docker 中 docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。 查看当前 Docker 支持的驱动：docker info 或 docker network ls，常见输出包含 bridge/host/none（null）/ingress（overlay）。 bridge（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。 host：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（docker run --network host nginx 等同于在宿主机直接监听 Host:80）。 macvlan：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；ipvlan 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。 生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。 技术要点 驱动查看命令： Copydocker info docker network ls常见输出： CopyNETWORK ID NAME DRIVER xxxx bridge bridge xxxx host host xxxx none null xxxx ingress overlaybridge 创建与特点：docker network create --driver bridge my-net；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。 host 驱动：docker run --network host nginx 直接监听 Host:80，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。 none 驱动：docker run --network none nginx 后容器没有网卡（除了 lo），完全隔离；用 docker exec -it nginx ip addr 只能看到 lo；适合安全隔离和特殊网络配置。 overlay 驱动：Swarm 集群专用，多节点通信基于 VXLAN 封装（Node1 容器A &lt;----VXLAN----&gt; Node2 容器B），创建命令： Copydocker network create \ --driver overlay \ my-overlaymacvlan 创建示例：容器直接使用物理网络、获得真实局域网 IP： Copydocker network create -d macvlan \ --subnet=192.168.1.0/24 \ --gateway=192.168.1.1 \ -o parent=eth0 \ macvlan-net docker run -it --network macvlan-net alpine容器可能获得 192.168.1.100，与 192.168.1.101 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。 ipvlan 创建示例：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境： Copydocker network create -d ipvlan \ --subnet=192.168.1.0/24 \ -o parent=eth0 \ ipvlan-net第三方驱动插件机制：docker plugin ls 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如： Copydocker network create \ --driver calico \ calico-net使用频率对照表： Driver 使用频率 场景 bridge ★★★★★ 单机容器 host ★★★★ 高性能应用 macvlan ★★★★ 容器直连物理网络 overlay ★★★ Swarm 集群 ipvlan ★★ 大规模网络 none ★★ 隔离环境 原文内容 在 Docker 中，docker network create --driver xxx 最常见的是 bridge，但实际上支持多种 Network Driver。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-DRIVER-type of VM">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-DRIVER-type of VM flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机容器driver的形式">虚机容器DRIVER的形式</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;]
+
+    BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;]
+    HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;]
+    NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;]
+    OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;]
+    MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;]
+    IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;]
+
+    DOCKER --&gt; BRIDGE
+    DOCKER --&gt; HOST
+    DOCKER --&gt; NONE
+    DOCKER --&gt; OVERLAY
+    DOCKER --&gt; MACVLAN
+    DOCKER --&gt; IPVLAN
+
+    subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;]
+        CALICO[&#34;Calico&#34;]
+        FLANNEL[&#34;Flannel&#34;]
+        WEAVE[&#34;Weave&#34;]
+        CILIUM[&#34;Cilium&#34;]
+        NSX[&#34;VMware NSX&#34;]
+    end
+    DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS
+
+    subgraph USAGE[&#34;生产环境选型&#34;]
+        U1[&#34;单机部署 → bridge&#34;]
+        U2[&#34;需要容器真实局域网IP → macvlan&#34;]
+        U3[&#34;Docker Swarm 集群 → overlay&#34;]
+        U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;]
+    end
+    BRIDGE --&gt; U1
+    MACVLAN --&gt; U2
+    OVERLAY --&gt; U3
+    PLUGINS --&gt; U4
+
+    subgraph BSC[&#34;bridge 网络示意&#34;]
+        CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;]
+        D0 --- HOSTS[&#34;Host&#34;]
+    end
+    BRIDGE --&gt; BSC
+
+    subgraph OVSC[&#34;overlay 网络示意&#34;]
+        N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;]
+    end
+    OVERLAY --&gt; OVSC</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Docker 中 <code>docker network create --driver xxx</code> 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。</li>
+<li>查看当前 Docker 支持的驱动：<code>docker info</code> 或 <code>docker network ls</code>，常见输出包含 bridge/host/none（null）/ingress（overlay）。</li>
+<li><strong>bridge</strong>（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。</li>
+<li><strong>host</strong>：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（<code>docker run --network host nginx</code> 等同于在宿主机直接监听 Host:80）。</li>
+<li><strong>macvlan</strong>：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；<strong>ipvlan</strong> 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。</li>
+<li>生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>驱动查看命令</strong>：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker info
+</span></span><span style="display:flex;"><span>docker network ls</span></span></code></pre></div>
+  </div>常见输出：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NETWORK ID     NAME      DRIVER
+</span></span><span style="display:flex;"><span>xxxx           bridge    bridge
+</span></span><span style="display:flex;"><span>xxxx           host      host
+</span></span><span style="display:flex;"><span>xxxx           none      null
+</span></span><span style="display:flex;"><span>xxxx           ingress   overlay</span></span></code></pre></div>
+  </div></li>
+<li><strong>bridge 创建与特点</strong>：<code>docker network create --driver bridge my-net</code>；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。</li>
+<li><strong>host 驱动</strong>：<code>docker run --network host nginx</code> 直接监听 <code>Host:80</code>，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。</li>
+<li><strong>none 驱动</strong>：<code>docker run --network none nginx</code> 后容器没有网卡（除了 lo），完全隔离；用 <code>docker exec -it nginx ip addr</code> 只能看到 lo；适合安全隔离和特殊网络配置。</li>
+<li><strong>overlay 驱动</strong>：Swarm 集群专用，多节点通信基于 VXLAN 封装（<code>Node1 容器A &lt;----VXLAN----&gt; Node2 容器B</code>），创建命令：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver overlay <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  my-overlay</span></span></code></pre></div>
+  </div></li>
+<li><strong>macvlan 创建示例</strong>：容器直接使用物理网络、获得真实局域网 IP：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d macvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --gateway<span style="color:#f92672">=</span>192.168.1.1 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  macvlan-net
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>docker run -it --network macvlan-net alpine</span></span></code></pre></div>
+  </div>容器可能获得 <code>192.168.1.100</code>，与 <code>192.168.1.101</code> 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。</li>
+<li><strong>ipvlan 创建示例</strong>：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d ipvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  ipvlan-net</span></span></code></pre></div>
+  </div></li>
+<li><strong>第三方驱动插件机制</strong>：<code>docker plugin ls</code> 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver calico <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  calico-net</span></span></code></pre></div>
+  </div></li>
+<li><strong>使用频率对照表</strong>：
+<table>
+	<thead>
+			<tr>
+					<th>Driver</th>
+					<th>使用频率</th>
+					<th>场景</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>bridge</td>
+					<td>★★★★★</td>
+					<td>单机容器</td>
+			</tr>
+			<tr>
+					<td>host</td>
+					<td>★★★★</td>
+					<td>高性能应用</td>
+			</tr>
+			<tr>
+					<td>macvlan</td>
+					<td>★★★★</td>
+					<td>容器直连物理网络</td>
+			</tr>
+			<tr>
+					<td>overlay</td>
+					<td>★★★</td>
+					<td>Swarm 集群</td>
+			</tr>
+			<tr>
+					<td>ipvlan</td>
+					<td>★★</td>
+					<td>大规模网络</td>
+			</tr>
+			<tr>
+					<td>none</td>
+					<td>★★</td>
+					<td>隔离环境</td>
+			</tr>
+	</tbody>
+</table>
+</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>在 Docker 中，<code>docker network create --driver xxx</code> 最常见的是 bridge，但实际上支持多种 Network Driver。</p>
+<p>先查看当前 Docker 支持的驱动：<code>docker info</code>，或者：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network ls</span></span></code></pre></div>
+  </div><p>常见输出：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NETWORK ID     NAME      DRIVER
+</span></span><span style="display:flex;"><span>xxxx           bridge    bridge
+</span></span><span style="display:flex;"><span>xxxx           host      host
+</span></span><span style="display:flex;"><span>xxxx           none      null
+</span></span><span style="display:flex;"><span>xxxx           ingress   overlay</span></span></code></pre></div>
+  </div><h3 id="1-bridge桥接">1. bridge（桥接）</h3>
+<p>默认驱动。</p>
+<p>特点：</p>
+<ul>
+<li>单机内使用</li>
+<li>容器间互通</li>
+<li>通过 NAT 与外部通信</li>
+<li>最常用</li>
+</ul>
+<p>创建命令：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create --driver bridge my-net</span></span></code></pre></div>
+  </div><p>网络示意：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Container A
+</span></span><span style="display:flex;"><span>      |
+</span></span><span style="display:flex;"><span>   docker0
+</span></span><span style="display:flex;"><span>      |
+</span></span><span style="display:flex;"><span>Container B
+</span></span><span style="display:flex;"><span>      |
+</span></span><span style="display:flex;"><span>   Host</span></span></code></pre></div>
+  </div><p>适用于：Web 服务、数据库、中间件。</p>
+<h3 id="2-host主机网络">2. host（主机网络）</h3>
+<p>容器直接使用宿主机网络栈。</p>
+<p>特点：</p>
+<ul>
+<li>没有独立 IP</li>
+<li>不需要端口映射</li>
+<li>性能最高</li>
+</ul>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker run --network host nginx</span></span></code></pre></div>
+  </div><p>等同于在宿主机直接监听：<code>Host:80</code></p>
+<p>适用于：高性能场景、网络转发、监控组件。</p>
+<h3 id="3-none空网络">3. none（空网络）</h3>
+<p>特点：</p>
+<ul>
+<li>没有网卡（除了 lo）</li>
+<li>完全隔离</li>
+</ul>
+<p>启动：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker run --network none nginx</span></span></code></pre></div>
+  </div><p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker exec -it nginx ip addr</span></span></code></pre></div>
+  </div><p>只能看到：<code>lo</code></p>
+<p>适用于：安全隔离、特殊网络配置。</p>
+<h3 id="4-overlay跨主机网络">4. overlay（跨主机网络）</h3>
+<p>Swarm 集群专用。</p>
+<p>特点：</p>
+<ul>
+<li>多节点通信</li>
+<li>VXLAN 封装</li>
+<li>容器跨主机互联</li>
+</ul>
+<p>创建：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver overlay <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  my-overlay</span></span></code></pre></div>
+  </div><p>示意：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Node1                Node2
+</span></span><span style="display:flex;"><span>容器A &lt;----VXLAN----&gt; 容器B</span></span></code></pre></div>
+  </div><p>适用于：Docker Swarm、微服务集群。</p>
+<h3 id="5-macvlan直接使用物理网络">5. macvlan（直接使用物理网络）</h3>
+<p>容器获得真实局域网 IP。</p>
+<p>启动：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d macvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --gateway<span style="color:#f92672">=</span>192.168.1.1 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  macvlan-net</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker run -it --network macvlan-net alpine</span></span></code></pre></div>
+  </div><p>容器可能获得：<code>192.168.1.100</code>，与 <code>192.168.1.101</code> 像真实机器一样存在于交换机网络中。</p>
+<p>适用于：网络设备模拟、需要真实 IP 的服务、广播/组播场景。</p>
+<h3 id="6-ipvlan">6. ipvlan</h3>
+<p>与 macvlan 类似，但共享网卡 MAC。</p>
+<p>特点：</p>
+<ul>
+<li>不大量消耗 MAC 地址</li>
+<li>大规模部署更友好</li>
+</ul>
+<p>创建：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d ipvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  ipvlan-net</span></span></code></pre></div>
+  </div><p>适用于：数据中心、云环境。</p>
+<h3 id="7-第三方网络驱动">7. 第三方网络驱动</h3>
+<p>Docker 支持插件机制。查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker plugin ls</span></span></code></pre></div>
+  </div><p>常见插件：Calico、Flannel、Weave、Cilium、VMware NSX。例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver calico <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  calico-net</span></span></code></pre></div>
+  </div><h3 id="生产环境最常见选择">生产环境最常见选择</h3>
+<p>对于大多数企业环境：</p>
+<ul>
+<li>单机部署 → bridge</li>
+<li>需要容器使用真实局域网 IP → macvlan</li>
+<li>Docker Swarm 集群 → overlay</li>
+</ul>
+<p>Kubernetes 环境通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。</p>
+<h3 id="driver-使用频率对照">Driver 使用频率对照</h3>
+<table>
+	<thead>
+			<tr>
+					<th>Driver</th>
+					<th>使用频率</th>
+					<th>场景</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>bridge</td>
+					<td>★★★★★</td>
+					<td>单机容器</td>
+			</tr>
+			<tr>
+					<td>host</td>
+					<td>★★★★</td>
+					<td>高性能应用</td>
+			</tr>
+			<tr>
+					<td>macvlan</td>
+					<td>★★★★</td>
+					<td>容器直连物理网络</td>
+			</tr>
+			<tr>
+					<td>overlay</td>
+					<td>★★★</td>
+					<td>Swarm 集群</td>
+			</tr>
+			<tr>
+					<td>ipvlan</td>
+					<td>★★</td>
+					<td>大规模网络</td>
+			</tr>
+			<tr>
+					<td>none</td>
+					<td>★★</td>
+					<td>隔离环境</td>
+			</tr>
+	</tbody>
+</table>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

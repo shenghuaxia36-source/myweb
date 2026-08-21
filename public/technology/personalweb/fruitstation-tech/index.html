@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="水果摊技术栈
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph 前端
+        BROWSER[浏览器]
+        VUE[Vue3 &#43; TypeScript &#43; Element Plus]
+        SPA[单页面应用 SPA]
+        COMPONENTS[登录/注册/商品/购物车/订单 组件]
+    end
+    subgraph 后端
+        SB[Spring Boot 3]
+        SECURITY[Spring Security 认证/授权/加密]
+        JWT[JWT 无状态登录]
+        SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务]
+    end
+    subgraph 数据层
+        MYSQL[(MySQL)]
+        REDIS[(Redis)]
+        RABBITMQ{{RabbitMQ}}
+    end
+    BROWSER --&gt;|HTTPS| VUE
+    VUE --&gt; SPA
+    SPA --&gt; COMPONENTS
+    VUE --&gt;|REST API| SB
+    SB --&gt; SECURITY
+    SECURITY --&gt; JWT
+    SB --&gt; SERVICES
+    SERVICES --&gt; MYSQL
+    SERVICES --&gt; REDIS
+    SERVICES --&gt; RABBITMQ
+  摘要
+
+技术栈选型为 Vue3 &#43; TypeScript &#43; Element Plus（前端）和 Spring Boot 3 &#43; Spring Security &#43; JWT（后端），是国内企业级电商系统最成熟的组合之一。
+Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。
+TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。
+Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。
+JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。
+单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx &#43; SpringBoot 双实例可达 100300 并发用户和 50100 QPS。
+
+技术要点
+
+Vue3 组件化开发：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。
+数据响应式：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。
+Composition API：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。
+TypeScript 类型检查：在开发时即可发现类型错误（如 price = &quot;abc&quot; 赋值给 number 类型），减少运行时 Bug。
+Element Plus UI 组件库：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。
+Spring Boot 3 自动配置：通过 @SpringBootApplication 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。
+Spring Security 安全框架：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。
+JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 Authorization: Bearer Token 传递，服务器无状态、支持集群和微服务。
+框架协作流程：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。
+容量评估：100 活跃用户 &#43; 5000 商品 &#43; 3000 单/天的场景，单台 4C8G 足够；采用 Nginx &#43; SpringBoot 双实例 &#43; Redis &#43; MySQL 可达 100300 并发、50100 QPS、10000&#43; 订单/天、响应时间 100ms~500ms。
+
+原文内容
+对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/fruitstation-tech/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/fruitstation-tech/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="水果摊技术栈 架构图 Copygraph TD subgraph 前端 BROWSER[浏览器] VUE[Vue3 &#43; TypeScript &#43; Element Plus] SPA[单页面应用 SPA] COMPONENTS[登录/注册/商品/购物车/订单 组件] end subgraph 后端 SB[Spring Boot 3] SECURITY[Spring Security 认证/授权/加密] JWT[JWT 无状态登录] SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务] end subgraph 数据层 MYSQL[(MySQL)] REDIS[(Redis)] RABBITMQ{{RabbitMQ}} end BROWSER --&gt;|HTTPS| VUE VUE --&gt; SPA SPA --&gt; COMPONENTS VUE --&gt;|REST API| SB SB --&gt; SECURITY SECURITY --&gt; JWT SB --&gt; SERVICES SERVICES --&gt; MYSQL SERVICES --&gt; REDIS SERVICES --&gt; RABBITMQ摘要 技术栈选型为 Vue3 &#43; TypeScript &#43; Element Plus（前端）和 Spring Boot 3 &#43; Spring Security &#43; JWT（后端），是国内企业级电商系统最成熟的组合之一。 Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。 TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。 Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。 JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。 单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx &#43; SpringBoot 双实例可达 100300 并发用户和 50100 QPS。 技术要点 Vue3 组件化开发：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。 数据响应式：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。 Composition API：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。 TypeScript 类型检查：在开发时即可发现类型错误（如 price = &#34;abc&#34; 赋值给 number 类型），减少运行时 Bug。 Element Plus UI 组件库：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。 Spring Boot 3 自动配置：通过 @SpringBootApplication 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。 Spring Security 安全框架：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。 JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 Authorization: Bearer Token 传递，服务器无状态、支持集群和微服务。 框架协作流程：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。 容量评估：100 活跃用户 &#43; 5000 商品 &#43; 3000 单/天的场景，单台 4C8G 足够；采用 Nginx &#43; SpringBoot 双实例 &#43; Redis &#43; MySQL 可达 100300 并发、50100 QPS、10000&#43; 订单/天、响应时间 100ms~500ms。 原文内容 对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="水果摊技术栈 架构图 Copygraph TD subgraph 前端 BROWSER[浏览器] VUE[Vue3 &#43; TypeScript &#43; Element Plus] SPA[单页面应用 SPA] COMPONENTS[登录/注册/商品/购物车/订单 组件] end subgraph 后端 SB[Spring Boot 3] SECURITY[Spring Security 认证/授权/加密] JWT[JWT 无状态登录] SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务] end subgraph 数据层 MYSQL[(MySQL)] REDIS[(Redis)] RABBITMQ{{RabbitMQ}} end BROWSER --&gt;|HTTPS| VUE VUE --&gt; SPA SPA --&gt; COMPONENTS VUE --&gt;|REST API| SB SB --&gt; SECURITY SECURITY --&gt; JWT SB --&gt; SERVICES SERVICES --&gt; MYSQL SERVICES --&gt; REDIS SERVICES --&gt; RABBITMQ摘要 技术栈选型为 Vue3 &#43; TypeScript &#43; Element Plus（前端）和 Spring Boot 3 &#43; Spring Security &#43; JWT（后端），是国内企业级电商系统最成熟的组合之一。 Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。 TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。 Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。 JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。 单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx &#43; SpringBoot 双实例可达 100300 并发用户和 50100 QPS。 技术要点 Vue3 组件化开发：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。 数据响应式：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。 Composition API：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。 TypeScript 类型检查：在开发时即可发现类型错误（如 price = &#34;abc&#34; 赋值给 number 类型），减少运行时 Bug。 Element Plus UI 组件库：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。 Spring Boot 3 自动配置：通过 @SpringBootApplication 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。 Spring Security 安全框架：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。 JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 Authorization: Bearer Token 传递，服务器无状态、支持集群和微服务。 框架协作流程：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。 容量评估：100 活跃用户 &#43; 5000 商品 &#43; 3000 单/天的场景，单台 4C8G 足够；采用 Nginx &#43; SpringBoot 双实例 &#43; Redis &#43; MySQL 可达 100300 并发、50100 QPS、10000&#43; 订单/天、响应时间 100ms~500ms。 原文内容 对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：">
+	<meta itemprop="wordCount" content="641">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="水果摊技术栈 架构图 Copygraph TD subgraph 前端 BROWSER[浏览器] VUE[Vue3 &#43; TypeScript &#43; Element Plus] SPA[单页面应用 SPA] COMPONENTS[登录/注册/商品/购物车/订单 组件] end subgraph 后端 SB[Spring Boot 3] SECURITY[Spring Security 认证/授权/加密] JWT[JWT 无状态登录] SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务] end subgraph 数据层 MYSQL[(MySQL)] REDIS[(Redis)] RABBITMQ{{RabbitMQ}} end BROWSER --&gt;|HTTPS| VUE VUE --&gt; SPA SPA --&gt; COMPONENTS VUE --&gt;|REST API| SB SB --&gt; SECURITY SECURITY --&gt; JWT SB --&gt; SERVICES SERVICES --&gt; MYSQL SERVICES --&gt; REDIS SERVICES --&gt; RABBITMQ摘要 技术栈选型为 Vue3 &#43; TypeScript &#43; Element Plus（前端）和 Spring Boot 3 &#43; Spring Security &#43; JWT（后端），是国内企业级电商系统最成熟的组合之一。 Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。 TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。 Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。 JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。 单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx &#43; SpringBoot 双实例可达 100300 并发用户和 50100 QPS。 技术要点 Vue3 组件化开发：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。 数据响应式：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。 Composition API：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。 TypeScript 类型检查：在开发时即可发现类型错误（如 price = &#34;abc&#34; 赋值给 number 类型），减少运行时 Bug。 Element Plus UI 组件库：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。 Spring Boot 3 自动配置：通过 @SpringBootApplication 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。 Spring Security 安全框架：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。 JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 Authorization: Bearer Token 传递，服务器无状态、支持集群和微服务。 框架协作流程：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。 容量评估：100 活跃用户 &#43; 5000 商品 &#43; 3000 单/天的场景，单台 4C8G 足够；采用 Nginx &#43; SpringBoot 双实例 &#43; Redis &#43; MySQL 可达 100300 并发、50100 QPS、10000&#43; 订单/天、响应时间 100ms~500ms。 原文内容 对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-fruitstation-tech">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-fruitstation-tech flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="水果摊技术栈">水果摊技术栈</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 前端
+        BROWSER[浏览器]
+        VUE[Vue3 + TypeScript + Element Plus]
+        SPA[单页面应用 SPA]
+        COMPONENTS[登录/注册/商品/购物车/订单 组件]
+    end
+    subgraph 后端
+        SB[Spring Boot 3]
+        SECURITY[Spring Security 认证/授权/加密]
+        JWT[JWT 无状态登录]
+        SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务]
+    end
+    subgraph 数据层
+        MYSQL[(MySQL)]
+        REDIS[(Redis)]
+        RABBITMQ{{RabbitMQ}}
+    end
+    BROWSER --&gt;|HTTPS| VUE
+    VUE --&gt; SPA
+    SPA --&gt; COMPONENTS
+    VUE --&gt;|REST API| SB
+    SB --&gt; SECURITY
+    SECURITY --&gt; JWT
+    SB --&gt; SERVICES
+    SERVICES --&gt; MYSQL
+    SERVICES --&gt; REDIS
+    SERVICES --&gt; RABBITMQ</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>技术栈选型为 Vue3 + TypeScript + Element Plus（前端）和 Spring Boot 3 + Spring Security + JWT（后端），是国内企业级电商系统最成熟的组合之一。</li>
+<li>Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。</li>
+<li>TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。</li>
+<li>Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。</li>
+<li>JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。</li>
+<li>单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx + SpringBoot 双实例可达 100<del>300 并发用户和 50</del>100 QPS。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Vue3 组件化开发</strong>：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。</li>
+<li><strong>数据响应式</strong>：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。</li>
+<li><strong>Composition API</strong>：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。</li>
+<li><strong>TypeScript 类型检查</strong>：在开发时即可发现类型错误（如 <code>price = &quot;abc&quot;</code> 赋值给 number 类型），减少运行时 Bug。</li>
+<li><strong>Element Plus UI 组件库</strong>：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。</li>
+<li><strong>Spring Boot 3 自动配置</strong>：通过 <code>@SpringBootApplication</code> 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。</li>
+<li><strong>Spring Security 安全框架</strong>：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。</li>
+<li><strong>JWT 无状态登录</strong>：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 <code>Authorization: Bearer Token</code> 传递，服务器无状态、支持集群和微服务。</li>
+<li><strong>框架协作流程</strong>：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。</li>
+<li><strong>容量评估</strong>：100 活跃用户 + 5000 商品 + 3000 单/天的场景，单台 4C8G 足够；采用 Nginx + SpringBoot 双实例 + Redis + MySQL 可达 100<del>300 并发、50</del>100 QPS、10000+ 订单/天、响应时间 100ms~500ms。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：</p>
+<ul>
+<li><strong>前端</strong>：Vue3 + TypeScript + Element Plus</li>
+<li><strong>后端</strong>：Spring Boot 3 + Spring Security + JWT</li>
+</ul>
+<p>实际上是目前国内企业级管理系统、电商系统、SaaS 平台最成熟的技术组合之一。</p>
+<p>这套技术栈最大的优势是：</p>
+<ul>
+<li>学习成本相对较低</li>
+<li>开发效率高</li>
+<li>企业使用广泛</li>
+<li>社区活跃</li>
+<li>招聘容易</li>
+<li>部署成熟</li>
+<li>后续扩展微服务方便</li>
+</ul>
+<h2 id="一整体技术架构">一、整体技术架构</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>┌─────────────────────────────┐
+│          浏览器              │
+└──────────────┬──────────────┘
+               │ HTTPS
+               ▼
+┌─────────────────────────────┐
+│      Vue3 + TS 前端         │
+│                             │
+│ 登录                         │
+│ 注册                         │
+│ 商品浏览                     │
+│ 购物车                       │
+│ 订单管理                     │
+└──────────────┬──────────────┘
+               │ REST API
+               ▼
+┌─────────────────────────────┐
+│ Spring Boot 3               │
+│                             │
+│ 用户服务                     │
+│ 商品服务                     │
+│ 订单服务                     │
+│ 邮件服务                     │
+└──────────────┬──────────────┘
+               │
+      ┌────────┼────────┐
+      ▼        ▼        ▼
+    MySQL    Redis   RabbitMQ</code></pre>
+  </div><h2 id="二vue3-详解">二、Vue3 详解</h2>
+<h3 id="什么是-vue3">什么是 Vue3</h3>
+<p>Vue3 是前端开发框架。</p>
+<p>简单说：如果 HTML 是房子骨架，Vue 就是帮助开发人员快速构建页面。</p>
+<h3 id="vue3-核心能力">Vue3 核心能力</h3>
+<h4 id="1-页面组件化">1. 页面组件化</h4>
+<p>传统开发：一个页面几千行代码，难维护。</p>
+<p>Vue：拆分管理。例如：</p>
+<ul>
+<li>登录组件</li>
+<li>注册组件</li>
+<li>商品组件</li>
+<li>订单组件</li>
+<li>购物车组件</li>
+</ul>
+<p>对应文件：<code>Login.vue</code>、<code>Register.vue</code>、<code>Product.vue</code>、<code>Cart.vue</code>、<code>Order.vue</code></p>
+<h4 id="2-数据响应式">2. 数据响应式</h4>
+<p>Vue 最大特色：data 变化 → 页面自动刷新，无需手动更新 DOM。</p>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>cartCount = 5</code></pre>
+  </div><p>页面立即显示：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>购物车（5）</code></pre>
+  </div><h4 id="3-单页面应用-spa">3. 单页面应用 SPA</h4>
+<p>页面跳转不刷新整个网站，用户体验极佳。类似：淘宝、京东、美团。</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>商品页面
+    ↓
+订单页面
+    ↓
+购物车</code></pre>
+  </div><h4 id="4-composition-api">4. Composition API</h4>
+<p>Vue3 官方推荐。例如：</p>
+<ul>
+<li><code>setup()</code></li>
+<li><code>ref()</code></li>
+<li><code>reactive()</code></li>
+<li><code>computed()</code></li>
+<li><code>watch()</code></li>
+</ul>
+<p>优点：代码逻辑集中、复用性高、维护方便，适合大型项目。</p>
+<h2 id="三typescript-详解">三、TypeScript 详解</h2>
+<h3 id="为什么需要-typescript">为什么需要 TypeScript</h3>
+<p>JavaScript 缺少类型检查。例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>price = &#34;abc&#34;</code></pre>
+  </div><p>系统不会报错，运行时才发现问题。</p>
+<p>TypeScript：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-typescript" data-lang="typescript"><span style="display:flex;"><span><span style="color:#66d9ef">let</span> <span style="color:#a6e22e">price</span>: <span style="color:#66d9ef">number</span> <span style="color:#f92672">=</span> <span style="color:#ae81ff">100</span>;</span></span></code></pre></div>
+  </div><p>错误：<code>price = &quot;abc&quot;</code> → IDE 立即提示。</p>
+<h3 id="typescript-核心能力">TypeScript 核心能力</h3>
+<h4 id="类型检查">类型检查</h4>
+<p>开发时发现问题，减少 Bug。</p>
+<h4 id="自动提示">自动提示</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-typescript" data-lang="typescript"><span style="display:flex;"><span><span style="color:#66d9ef">interface</span> <span style="color:#a6e22e">Product</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">id</span>: <span style="color:#66d9ef">number</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">name</span>: <span style="color:#66d9ef">string</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">price</span>: <span style="color:#66d9ef">number</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><p>输入 <code>product.</code> → IDE 立即显示：<code>id</code>、<code>name</code>、<code>price</code>、<code>stock</code>。</p>
+<h4 id="企业级开发必备">企业级开发必备</h4>
+<p>目前 Vue3、Angular、React、NestJS 全部默认推荐 TypeScript。</p>
+<h2 id="四element-plus-详解">四、Element Plus 详解</h2>
+<h3 id="什么是-element-plus">什么是 Element Plus</h3>
+<p>Vue3 官方生态中最流行 UI 组件库之一。类似乐高积木，直接拖来使用。</p>
+<h3 id="能提供什么">能提供什么</h3>
+<h4 id="登录框">登录框</h4>
+<p>已封装完成。只需：用户名、密码、登录按钮，即可使用。支持：校验、错误提示、提交。</p>
+<h4 id="表单">表单</h4>
+<p>商品列表：商品名称、价格、库存、销量。直接使用即可。</p>
+<h4 id="表格">表格</h4>
+<p>支持：上一页、下一页、页码，自动实现。</p>
+<h4 id="分页">分页</h4>
+<p>自动实现分页功能。</p>
+<h3 id="element-plus-适合什么">Element Plus 适合什么</h3>
+<p>特别适合：后台管理系统、ERP、CRM、商城、OA。开发效率极高，快速开发企业级后台。</p>
+<h2 id="五spring-boot-3-详解">五、Spring Boot 3 详解</h2>
+<h3 id="什么是-spring-boot">什么是 Spring Boot</h3>
+<p>Java 领域第一框架。</p>
+<p>以前：大量配置文件、XML、Servlet。</p>
+<p>Spring Boot：<code>@SpringBootApplication</code> 即可启动项目。</p>
+<h3 id="spring-boot-能力">Spring Boot 能力</h3>
+<h4 id="rest-接口开发">REST 接口开发</h4>
+<p>例如：<code>@PostMapping(&quot;/login&quot;)</code> → 即可生成 <code>/api/login</code> 接口，前端调用实现登录。</p>
+<h4 id="自动配置">自动配置</h4>
+<p>自动完成：数据库连接、Redis 连接、JSON 转换、日志、事务管理。开发人员无需手工配置。</p>
+<h4 id="模块化开发">模块化开发</h4>
+<ul>
+<li>订单模块：<code>order</code></li>
+<li>商品模块：<code>product</code></li>
+<li>用户模块：<code>user</code></li>
+</ul>
+<p>结构清晰。</p>
+<h2 id="六spring-security-详解">六、Spring Security 详解</h2>
+<p>这是 Spring 官方安全框架。</p>
+<h3 id="没有-spring-security">没有 Spring Security</h3>
+<p>登录后：任何接口都能访问，存在风险。</p>
+<h3 id="有-spring-security">有 Spring Security</h3>
+<p>自动实现：认证、授权、权限控制、登录校验、登录失效、防攻击。</p>
+<h4 id="用户认证">用户认证</h4>
+<p>验证：用户名、密码是否正确。</p>
+<h4 id="权限管理">权限管理</h4>
+<p>例如：</p>
+<ul>
+<li>管理员：添加商品、删除商品、审核订单</li>
+<li>普通用户：浏览商品、下单</li>
+</ul>
+<p>通过角色控制：<code>ROLE_ADMIN</code>、<code>ROLE_USER</code>。</p>
+<h4 id="密码加密">密码加密</h4>
+<p>Spring Security 默认支持：BCrypt、PBKDF2、Argon2。</p>
+<p>例如：<code>new BCryptPasswordEncoder()</code></p>
+<p>数据库中存储：<code>$2a$10$xxxxx...</code>，不是明文密码。</p>
+<h2 id="七jwt-详解">七、JWT 详解</h2>
+<h3 id="什么是-jwt">什么是 JWT</h3>
+<p>全称：JSON Web Token，用于无状态登录。</p>
+<p>传统登录：Session，服务器保存用户状态，并发大时压力增加。</p>
+<p>JWT：服务器不保存，都在 Token 里。</p>
+<p>包含：用户信息、签名、过期时间。</p>
+<p>例如：<code>eyJhbGciOiJIUzI1Ni...</code></p>
+<h4 id="登录过程">登录过程</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>用户登录
+    │
+    ▼
+验证密码
+    │
+    ▼
+生成JWT
+    │
+    ▼
+返回前端</code></pre>
+  </div><p>前端保存：LocalStorage</p>
+<p>后续请求：<code>Authorization: Bearer Token</code></p>
+<p>后端验证：Token 是否合法、是否过期。</p>
+<h3 id="jwt-优势">JWT 优势</h3>
+<p>服务器无状态、支持集群、支持微服务、扩展方便。</p>
+<p>特别适合：商城系统、SaaS 系统、APP、小程序。</p>
+<h2 id="八整个项目中各框架如何协作">八、整个项目中各框架如何协作</h2>
+<h3 id="注册">注册</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Vue页面
+    │
+    ▼
+输入邮箱
+    │
+    ▼
+Spring Boot
+    │
+    ▼
+SMTP发送邮件
+    │
+    ▼
+Redis缓存验证码</code></pre>
+  </div><h3 id="登录">登录</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Vue3
+    │
+    ▼
+输入密码
+    │
+    ▼
+Spring Security认证
+    │
+    ▼
+生成JWT
+    │
+    ▼
+返回Token</code></pre>
+  </div><h3 id="浏览商品">浏览商品</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Vue
+    │
+    ▼
+Axios请求
+    │
+    ▼
+SpringBoot
+    │
+    ▼
+MySQL
+    │
+    ▼
+返回商品数据</code></pre>
+  </div><h3 id="下单">下单</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Vue
+    │
+    ▼
+创建订单
+    │
+    ▼
+SpringBoot
+    │
+    ▼
+库存校验
+    │
+    ▼
+生成订单
+    │
+    ▼
+写入MySQL</code></pre>
+  </div><h2 id="九生态成熟度评估">九、生态成熟度评估</h2>
+<h3 id="vue3-生态">Vue3 生态</h3>
+<p>非常成熟。核心配套：Vue Router、Pinia、Axios、Element Plus、Vite。基本覆盖所有业务开发需求。</p>
+<h3 id="spring-生态">Spring 生态</h3>
+<p>Java 全球最大生态。扩展组件：Spring Cloud、Spring Security、Spring Data、Spring Batch、Spring AI、Spring Gateway。未来扩展能力极强。</p>
+<h2 id="十对于-100-活跃用户是否足够">十、对于 100 活跃用户是否足够</h2>
+<p>答案：完全足够，而且属于资源富余。</p>
+<p>你的商城场景：100 在线用户、商品 5000 个、订单 3000 单/天。</p>
+<p>采用：Vue3 + SpringBoot + MySQL + Redis，单台 4C8G 服务器即可支撑。</p>
+<p>如果采用：Nginx + SpringBoot 双实例 + Redis + MySQL</p>
+<p>整体可达到：100<del>300 并发用户、50</del>100 QPS、10000+ 订单/天</p>
+<p>响应时间通常控制在：100ms ~ 500ms</p>
+<p>完全满足中小型商业水果商城上线运营需求，同时为后续扩容到微服务、Kubernetes、分布式订单系统预留充足空间。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

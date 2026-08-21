@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Azure Landing Zone 与企业级网络架构
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph MG[&#34;Tenant / Management Group 层&#34;]
+        ROOT[&#34;Tenant&#34;]
+        PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;]
+        CORP[&#34;Corp-MG&#34;]
+        ONLINE[&#34;Online-MG&#34;]
+        LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;]
+        ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE
+        ROOT --&gt; LZ
+    end
+
+    subgraph OnPrem[&#34;企业本地网络&#34;]
+        HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;]
+        BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;]
+        SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;]
+        IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;]
+    end
+
+    subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;]
+        FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向&#43;东西向&#34;]
+        VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;]
+        BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;]
+        RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;]
+    end
+
+    subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;]
+        PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;]
+        TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;]
+        DR[&#34;Spoke-DR&#34;]
+        SHARED[&#34;Shared&#34;]
+    end
+
+    subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;]
+        SQL[&#34;Azure SQL&#34;]
+        KV[&#34;Key Vault&#34;]
+        STG[&#34;Storage Account&#34;]
+    end
+
+    USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD
+    HQ --&gt;|ExpressRoute / IPSec VPN| VPN
+    BJ --&gt;|Branch VPN| VPN
+    SZ --&gt;|Branch VPN| VPN
+    IDC --&gt;|ExpressRoute| VPN
+    VPN --&gt; FW &amp; RS
+    Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED
+    PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG
+    PROD --&gt;|UDR 0.0.0.0/0| FW
+    FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]
+  摘要
+
+文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。
+后半部分以&quot;总部（上海）&#43; 北京/深圳分部 &#43; 本地 IDC &#43; Azure 云（Production/Test/DR）&ldquo;的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。
+管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。
+接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。
+生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。
+关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）&#43; UDR（0.0.0.0/0 → Azure Firewall 强制审计）&#43; BGP 动态路由（Route Server &#43; ExpressRoute &#43; SD-WAN 应对新增分支/网段）&#43; Zero Trust（Never Trust, Always Verify）&#43; NSG/ASG 微隔离 &#43; 全组件 Availability Zone 高可用。
+
+技术要点
+
+VNet（虚拟网络）：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。
+生产/测试隔离与 VNet Peering：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。
+NAT Gateway：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。
+NSG &#43; ASG 组合：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。
+Azure Bastion：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。
+Route Table (UDR) 与 Route Server：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。
+Private Link 三件套：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway &#43; Internal Load Balancer）通过私网发布给外部客户 VNet。
+Network Security Perimeter：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。
+Hub-Spoke 资源规划：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。
+统一出口与 DNS：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。
+
+原文内容
+从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/hybidcloud/azure-landing-zone/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/hybidcloud/azure-landing-zone/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Azure Landing Zone 与企业级网络架构 架构图 Copyflowchart TD subgraph MG[&#34;Tenant / Management Group 层&#34;] ROOT[&#34;Tenant&#34;] PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;] CORP[&#34;Corp-MG&#34;] ONLINE[&#34;Online-MG&#34;] LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;] ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE ROOT --&gt; LZ end subgraph OnPrem[&#34;企业本地网络&#34;] HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;] BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;] SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;] IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;] end subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;] FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向&#43;东西向&#34;] VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;] BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;] RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;] end subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;] PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;] TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;] DR[&#34;Spoke-DR&#34;] SHARED[&#34;Shared&#34;] end subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;] SQL[&#34;Azure SQL&#34;] KV[&#34;Key Vault&#34;] STG[&#34;Storage Account&#34;] end USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD HQ --&gt;|ExpressRoute / IPSec VPN| VPN BJ --&gt;|Branch VPN| VPN SZ --&gt;|Branch VPN| VPN IDC --&gt;|ExpressRoute| VPN VPN --&gt; FW &amp; RS Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG PROD --&gt;|UDR 0.0.0.0/0| FW FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]摘要 文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。 后半部分以&#34;总部（上海）&#43; 北京/深圳分部 &#43; 本地 IDC &#43; Azure 云（Production/Test/DR）“的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。 管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。 接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。 生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。 关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）&#43; UDR（0.0.0.0/0 → Azure Firewall 强制审计）&#43; BGP 动态路由（Route Server &#43; ExpressRoute &#43; SD-WAN 应对新增分支/网段）&#43; Zero Trust（Never Trust, Always Verify）&#43; NSG/ASG 微隔离 &#43; 全组件 Availability Zone 高可用。 技术要点 VNet（虚拟网络）：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。 生产/测试隔离与 VNet Peering：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。 NAT Gateway：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。 NSG &#43; ASG 组合：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。 Azure Bastion：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。 Route Table (UDR) 与 Route Server：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。 Private Link 三件套：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway &#43; Internal Load Balancer）通过私网发布给外部客户 VNet。 Network Security Perimeter：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。 Hub-Spoke 资源规划：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。 统一出口与 DNS：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。 原文内容 从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Azure Landing Zone 与企业级网络架构 架构图 Copyflowchart TD subgraph MG[&#34;Tenant / Management Group 层&#34;] ROOT[&#34;Tenant&#34;] PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;] CORP[&#34;Corp-MG&#34;] ONLINE[&#34;Online-MG&#34;] LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;] ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE ROOT --&gt; LZ end subgraph OnPrem[&#34;企业本地网络&#34;] HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;] BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;] SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;] IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;] end subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;] FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向&#43;东西向&#34;] VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;] BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;] RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;] end subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;] PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;] TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;] DR[&#34;Spoke-DR&#34;] SHARED[&#34;Shared&#34;] end subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;] SQL[&#34;Azure SQL&#34;] KV[&#34;Key Vault&#34;] STG[&#34;Storage Account&#34;] end USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD HQ --&gt;|ExpressRoute / IPSec VPN| VPN BJ --&gt;|Branch VPN| VPN SZ --&gt;|Branch VPN| VPN IDC --&gt;|ExpressRoute| VPN VPN --&gt; FW &amp; RS Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG PROD --&gt;|UDR 0.0.0.0/0| FW FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]摘要 文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。 后半部分以&#34;总部（上海）&#43; 北京/深圳分部 &#43; 本地 IDC &#43; Azure 云（Production/Test/DR）“的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。 管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。 接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。 生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。 关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）&#43; UDR（0.0.0.0/0 → Azure Firewall 强制审计）&#43; BGP 动态路由（Route Server &#43; ExpressRoute &#43; SD-WAN 应对新增分支/网段）&#43; Zero Trust（Never Trust, Always Verify）&#43; NSG/ASG 微隔离 &#43; 全组件 Availability Zone 高可用。 技术要点 VNet（虚拟网络）：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。 生产/测试隔离与 VNet Peering：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。 NAT Gateway：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。 NSG &#43; ASG 组合：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。 Azure Bastion：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。 Route Table (UDR) 与 Route Server：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。 Private Link 三件套：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway &#43; Internal Load Balancer）通过私网发布给外部客户 VNet。 Network Security Perimeter：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。 Hub-Spoke 资源规划：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。 统一出口与 DNS：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。 原文内容 从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。">
+	<meta itemprop="wordCount" content="1172">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Azure Landing Zone 与企业级网络架构 架构图 Copyflowchart TD subgraph MG[&#34;Tenant / Management Group 层&#34;] ROOT[&#34;Tenant&#34;] PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;] CORP[&#34;Corp-MG&#34;] ONLINE[&#34;Online-MG&#34;] LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;] ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE ROOT --&gt; LZ end subgraph OnPrem[&#34;企业本地网络&#34;] HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;] BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;] SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;] IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;] end subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;] FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向&#43;东西向&#34;] VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;] BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;] RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;] end subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;] PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;] TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;] DR[&#34;Spoke-DR&#34;] SHARED[&#34;Shared&#34;] end subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;] SQL[&#34;Azure SQL&#34;] KV[&#34;Key Vault&#34;] STG[&#34;Storage Account&#34;] end USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD HQ --&gt;|ExpressRoute / IPSec VPN| VPN BJ --&gt;|Branch VPN| VPN SZ --&gt;|Branch VPN| VPN IDC --&gt;|ExpressRoute| VPN VPN --&gt; FW &amp; RS Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG PROD --&gt;|UDR 0.0.0.0/0| FW FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]摘要 文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。 后半部分以&#34;总部（上海）&#43; 北京/深圳分部 &#43; 本地 IDC &#43; Azure 云（Production/Test/DR）“的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。 管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。 接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。 生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。 关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）&#43; UDR（0.0.0.0/0 → Azure Firewall 强制审计）&#43; BGP 动态路由（Route Server &#43; ExpressRoute &#43; SD-WAN 应对新增分支/网段）&#43; Zero Trust（Never Trust, Always Verify）&#43; NSG/ASG 微隔离 &#43; 全组件 Availability Zone 高可用。 技术要点 VNet（虚拟网络）：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。 生产/测试隔离与 VNet Peering：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。 NAT Gateway：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。 NSG &#43; ASG 组合：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。 Azure Bastion：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。 Route Table (UDR) 与 Route Server：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。 Private Link 三件套：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway &#43; Internal Load Balancer）通过私网发布给外部客户 VNet。 Network Security Perimeter：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。 Hub-Spoke 资源规划：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。 统一出口与 DNS：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。 原文内容 从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-Azure landing zone">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-Azure landing zone flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="azure-landing-zone-与企业级网络架构">Azure Landing Zone 与企业级网络架构</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph MG[&#34;Tenant / Management Group 层&#34;]
+        ROOT[&#34;Tenant&#34;]
+        PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;]
+        CORP[&#34;Corp-MG&#34;]
+        ONLINE[&#34;Online-MG&#34;]
+        LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;]
+        ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE
+        ROOT --&gt; LZ
+    end
+
+    subgraph OnPrem[&#34;企业本地网络&#34;]
+        HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;]
+        BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;]
+        SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;]
+        IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;]
+    end
+
+    subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;]
+        FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向+东西向&#34;]
+        VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;]
+        BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;]
+        RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;]
+    end
+
+    subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;]
+        PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;]
+        TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;]
+        DR[&#34;Spoke-DR&#34;]
+        SHARED[&#34;Shared&#34;]
+    end
+
+    subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;]
+        SQL[&#34;Azure SQL&#34;]
+        KV[&#34;Key Vault&#34;]
+        STG[&#34;Storage Account&#34;]
+    end
+
+    USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD
+    HQ --&gt;|ExpressRoute / IPSec VPN| VPN
+    BJ --&gt;|Branch VPN| VPN
+    SZ --&gt;|Branch VPN| VPN
+    IDC --&gt;|ExpressRoute| VPN
+    VPN --&gt; FW &amp; RS
+    Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED
+    PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG
+    PROD --&gt;|UDR 0.0.0.0/0| FW
+    FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。</li>
+<li>后半部分以&quot;总部（上海）+ 北京/深圳分部 + 本地 IDC + Azure 云（Production/Test/DR）&ldquo;的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。</li>
+<li>管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。</li>
+<li>接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。</li>
+<li>生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。</li>
+<li>关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）+ UDR（0.0.0.0/0 → Azure Firewall 强制审计）+ BGP 动态路由（Route Server + ExpressRoute + SD-WAN 应对新增分支/网段）+ Zero Trust（Never Trust, Always Verify）+ NSG/ASG 微隔离 + 全组件 Availability Zone 高可用。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>VNet（虚拟网络）</strong>：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。</li>
+<li><strong>生产/测试隔离与 VNet Peering</strong>：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。</li>
+<li><strong>NAT Gateway</strong>：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。</li>
+<li><strong>NSG + ASG 组合</strong>：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。</li>
+<li><strong>Azure Bastion</strong>：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。</li>
+<li><strong>Route Table (UDR) 与 Route Server</strong>：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。</li>
+<li><strong>Private Link 三件套</strong>：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway + Internal Load Balancer）通过私网发布给外部客户 VNet。</li>
+<li><strong>Network Security Perimeter</strong>：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。</li>
+<li><strong>Hub-Spoke 资源规划</strong>：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。</li>
+<li><strong>统一出口与 DNS</strong>：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。</p>
+<h3 id="1-virtual-network-overview虚拟网络概览">1. Virtual Network Overview（虚拟网络概览）</h3>
+<p><strong>功能介绍</strong>：Virtual Network（VNet）是 Azure 网络的基础，相当于企业数据中心中的局域网（LAN）。它可以：</p>
+<ul>
+<li>为 Azure 资源提供私有 IP 通信</li>
+<li>划分子网（Subnet）</li>
+<li>与本地机房建立 VPN/专线连接</li>
+<li>控制网络安全和路由</li>
+</ul>
+<p><strong>实例</strong>：假设部署一个三层应用（Internet → Web 服务器子网 → 应用服务器子网 → 数据库子网），创建 VNet：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>VNet: 10.0.0.0/16
+  Web Subnet:  10.0.1.0/24
+  App Subnet:  10.0.2.0/24
+  DB Subnet:   10.0.3.0/24</code></pre>
+  </div><p>这样应用内部通信走私网，更安全。</p>
+<h3 id="2-virtual-networks虚拟网络">2. Virtual Networks（虚拟网络）</h3>
+<p><strong>功能介绍</strong>：管理所有 VNet：创建 VNet、配置地址空间、创建子网、VNet Peering、DNS 配置。</p>
+<p><strong>实例 —— 场景：生产与测试环境隔离</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>VNet-Prod: 10.0.0.0/16
+VNet-Test: 10.1.0.0/16</code></pre>
+  </div><p>两个环境互不影响。如果需要通信：建立 VNet Peering 连接即可。</p>
+<h3 id="3-nat-gatewaysnat-网关">3. NAT Gateways（NAT 网关）</h3>
+<p><strong>功能介绍</strong>：为私有子网中的资源提供固定公网出口。主要解决：VM 无公网 IP、所有服务器共享固定出口 IP、避免 SNAT 端口耗尽。</p>
+<p><strong>实例 —— 企业访问第三方系统</strong></p>
+<p>第三方安全策略：只允许 <code>52.180.20.10</code>。配置 NAT Gateway（Public IP: 52.180.20.10）后，所有 VM 出网都显示该 IP，方便白名单管理。</p>
+<h3 id="4-public-ip-addresses公网-ip">4. Public IP Addresses（公网 IP）</h3>
+<p><strong>功能介绍</strong>：给 Azure 资源分配公网地址。支持：VM、Load Balancer、NAT Gateway、Firewall、Application Gateway。</p>
+<p><strong>实例 —— 发布网站</strong>：VM 绑定 Public IP（20.10.100.1）后，用户可访问 <code>http://20.10.100.1</code>。</p>
+<h3 id="5-network-interfaces网卡-nic">5. Network Interfaces（网卡 NIC）</h3>
+<p><strong>功能介绍</strong>：Azure VM 的网络接口。配置内容：私有 IP、公网 IP、NSG、子网关联。</p>
+<p><strong>实例</strong>：一个 Web 服务器 VM-Web01 的 NIC 私有 IP 为 10.0.1.4；如果需要公网访问，给 NIC 绑定 Public IP（20.10.100.1）。</p>
+<h3 id="6-network-security-groupsnsg">6. Network Security Groups（NSG）</h3>
+<p><strong>功能介绍</strong>：Azure 最常用的网络安全控制组件。类似防火墙 / ACL / Security Policy。控制入站流量、出站流量。</p>
+<p><strong>实例 —— 只开放 HTTPS</strong></p>
+<p>规则：</p>
+<table>
+	<thead>
+			<tr>
+					<th>Priority</th>
+					<th>Source</th>
+					<th>Port</th>
+					<th>Action</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>100</td>
+					<td>Internet</td>
+					<td>443</td>
+					<td>Allow</td>
+			</tr>
+			<tr>
+					<td>200</td>
+					<td>Internet</td>
+					<td>*</td>
+					<td>Deny</td>
+			</tr>
+	</tbody>
+</table>
+<p>效果：HTTPS ✅，HTTP ❌，RDP ❌。</p>
+<h3 id="7-application-security-groupsasg">7. Application Security Groups（ASG）</h3>
+<p><strong>功能介绍</strong>：应用安全组。用于将多个 VM 按业务逻辑分组，而不是按 IP 管理安全规则。</p>
+<p><strong>实例</strong>：创建 ASG-Web、ASG-App、ASG-DB；NSG 规则：ASG-Web →↓443 ASG-App，ASG-App →↓1433 ASG-DB。即使服务器增加（Web01、Web02、Web03），规则无需修改。</p>
+<h3 id="8-bastionsazure-bastion">8. Bastions（Azure Bastion）</h3>
+<p><strong>功能介绍</strong>：提供安全远程登录。无需公网 IP、不开 3389/22 端口，即可访问 Windows VM、Linux VM。</p>
+<p><strong>实例</strong>：传统方式 Internet → RDP 3389 → VM 存在暴露风险。使用 Bastion：Browser → Azure Portal → Bastion → VM，更安全。</p>
+<h3 id="9-route-tables路由表">9. Route Tables（路由表）</h3>
+<p><strong>功能介绍</strong>：控制流量走向。默认使用 Azure System Route，也可自定义 User Defined Route (UDR)。</p>
+<p><strong>实例 —— 强制流量经过防火墙</strong></p>
+<p>路由：VM → Route Table → Azure Firewall → Internet。配置 <code>0.0.0.0/0 → Next Hop: Firewall</code>，实现统一审计。</p>
+<h3 id="10-route-servers路由服务器">10. Route Servers（路由服务器）</h3>
+<p><strong>功能介绍</strong>：Azure Route Server 用于动态路由交换。基于 BGP（Border Gateway Protocol），避免手工维护路由。</p>
+<p><strong>实例 —— SD-WAN 集成</strong>：Azure ↔ Route Server ↔ SD-WAN Appliance，新网络出现时自动学习路由，无需修改 UDR。</p>
+<h3 id="11-private-link-overview专用链接概览">11. Private Link Overview（专用链接概览）</h3>
+<p><strong>功能介绍</strong>：Azure Private Link 允许通过私网访问 Azure 服务。访问路径：VNet → Private Endpoint → PaaS Service，而不是公网。</p>
+<h3 id="12-private-endpoints私有终结点">12. Private Endpoints（私有终结点）</h3>
+<p><strong>功能介绍</strong>：为 Azure PaaS 服务分配私有 IP。支持：Storage Account、SQL Database、Key Vault、Cosmos DB、App Service。</p>
+<p><strong>实例</strong>：传统方式 VM → Internet → Storage Account；使用 Private Endpoint 后 VM → 10.0.1.5 → Storage Account，完全内网访问。</p>
+<h3 id="13-pending-connections待批准连接">13. Pending Connections（待批准连接）</h3>
+<p><strong>功能介绍</strong>：显示等待审批的 Private Link 连接请求。适用于服务提供方需要审批的场景。</p>
+<p><strong>实例</strong>：供应商 SaaS 的连接请求处于 Pending 状态，审批（Approved）后才能通信。</p>
+<h3 id="14-private-link-services私有链接服务">14. Private Link Services（私有链接服务）</h3>
+<p><strong>功能介绍</strong>：向外部客户发布自己的私有服务。本质是：你的负载均衡器 → Private Link Service → 客户 VNet。</p>
+<p><strong>实例</strong>：企业提供内部 API（API Gateway → Internal Load Balancer → Private Link Service），客户通过私网直接访问。</p>
+<h3 id="15-network-security-perimeters网络安全边界">15. Network Security Perimeters（网络安全边界）</h3>
+<p><strong>功能介绍</strong>：较新的 Azure 网络安全能力。用于保护 Storage Account、Key Vault、SQL、AI 服务。通过定义可信网络边界（VNet-A、VNet-B），阻止未授权访问。</p>
+<p><strong>实例</strong>：允许 VNet-A/VNet-B 访问 Key Vault，拒绝 Internet 和其它订阅，实现更细粒度的数据边界保护。</p>
+<h3 id="16-active-connections活动连接">16. Active Connections（活动连接）</h3>
+<p><strong>功能介绍</strong>：查看当前已建立的网络连接。常用于监控 VPN、ExpressRoute、Private Link 的网络连接状态。</p>
+<p><strong>实例</strong>：运维检查状态显示 Connected ✅、Bandwidth: 200 Mbps、Latency: 20 ms，可快速判断链路是否正常。</p>
+<h3 id="企业级架构示例">企业级架构示例</h3>
+<p>一个典型生产环境会同时使用这些组件：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Internet
+    |
+Application Gateway
+    |
+Web Subnet (NSG)
+    |
+App Subnet (NSG + ASG)
+    |
+DB Subnet
+    |
+Private Endpoint
+    |
+Azure SQL
+    |
+Key Vault (Private Link)
+
+出口流量 → NAT Gateway
+远程运维 → Azure Bastion
+安全审计 → Route Table → Azure Firewall</code></pre>
+  </div><p>这也是目前大多数企业 Landing Zone 和企业级 Azure 网络架构的标准模式。</p>
+<p>这是一个非常典型的企业级 Azure 网络规划问题。对于大型企业（总部 + 多分支 + 本地数据中心）来说，Azure 官方推荐采用 Cloud Adoption Framework (CAF) Landing Zone 架构，并结合 Hub-Spoke Network Topology 建设企业网络。我以一个真实企业案例来说明。</p>
+<h3 id="一企业组织架构">一、企业组织架构</h3>
+<p>假设企业如下：</p>
+<ul>
+<li>总部（上海）：IT 中心、财务系统、ERP 系统</li>
+<li>分部 A（北京）：销售团队、CRM 系统</li>
+<li>分部 B（深圳）：研发团队</li>
+<li>本地数据中心（IDC）：Oracle 数据库、VMware 集群、AD 域控、文件服务器</li>
+<li>Azure 云：Production、Test、DR</li>
+</ul>
+<h3 id="二landing-zone-总体架构">二、Landing Zone 总体架构</h3>
+<p>Azure 官方推荐的企业 Landing Zone：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Tenant
+ ├─ Management Group
+ ├─ Platform
+ │   ├─ Identity
+ │   ├─ Connectivity
+ │   └─ Management
+ └─ Landing Zones
+     ├─ Prod
+     ├─ NonProd
+     └─ Sandbox</code></pre>
+  </div><p>对应订阅规划：Management Group 下分 Platform-MG、Corp-MG、Online-MG。</p>
+<h3 id="三网络架构标准模式">三、网络架构标准模式</h3>
+<p>采用 Hub-Spoke 架构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>            Azure
+              │
+         ┌────Hub────┐
+         │           │
+   Azure Firewall  VPN Gateway
+         │           │
+         └─Route Server─┘
+               │
+     ┌─────────┼─────────┐
+     │         │         │
+ Spoke-Prod Spoke-Test Spoke-DR</code></pre>
+  </div><h3 id="四资源规划与部署实例">四、资源规划与部署实例</h3>
+<p><strong>Hub 网络（共享网络中心）</strong></p>
+<ul>
+<li>规划创建：VNet-Hub，Address: 10.0.0.0/16</li>
+<li>子网：AzureFirewallSubnet 10.0.1.0/24、GatewaySubnet 10.0.2.0/24、AzureBastionSubnet 10.0.3.0/24、RouteServerSubnet 10.0.4.0/24</li>
+</ul>
+<p><strong>部署资源</strong></p>
+<ul>
+<li><strong>Azure Firewall</strong>（Firewall-PROD）：统一出入口，管控南北向流量与东西向流量。</li>
+<li><strong>VPN Gateway</strong>（VPNGW-HUB）：SKU VpnGw2AZ，连接总部、北京分部、深圳分部、IDC。</li>
+<li><strong>Azure Bastion</strong>（Bastion-HUB）：远程运维，无需公网 IP。</li>
+<li><strong>Route Server</strong>（RouteServer-HUB）：BGP 动态路由。</li>
+</ul>
+<h3 id="五总部接入方案">五、总部接入方案</h3>
+<ul>
+<li>总部网络：172.16.0.0/16</li>
+<li>总部部署：SD-WAN 设备（Cisco、Fortinet、Palo Alto）</li>
+<li>连接方式：总部 → IPSec VPN → VPN Gateway → Azure Hub；或者 ExpressRoute 企业专线接入。</li>
+</ul>
+<h3 id="六分部接入方案">六、分部接入方案</h3>
+<ul>
+<li>北京（172.17.0.0/16）、深圳（172.18.0.0/16）</li>
+<li>通过 Branch VPN 连接到 Azure Hub，实现：总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 互通。</li>
+</ul>
+<h3 id="七数据中心接入方案">七、数据中心接入方案</h3>
+<ul>
+<li>IDC：192.168.0.0/16，关键系统：Oracle、SAP、AD、文件服务器</li>
+<li>连接：IDC → ExpressRoute → Azure Hub</li>
+<li>企业一般优先推荐 ExpressRoute，原因：更稳定、SLA 更高、延迟更低、不走公网。</li>
+</ul>
+<h3 id="八生产环境部署">八、生产环境部署</h3>
+<p><strong>VNet 规划</strong>：Spoke-Prod，10.10.0.0/16</p>
+<ul>
+<li>Web 子网：10.10.1.0/24（VMSS、App Service、AKS）</li>
+<li>App 子网：10.10.2.0/24（App Servers、AKS、Container Apps）</li>
+<li>DB 子网：10.10.3.0/24（Azure SQL、SQL MI、Oracle）</li>
+</ul>
+<p><strong>网络安全（NSG）</strong>：</p>
+<ul>
+<li>Internet ↓443 → Web</li>
+<li>Web ↓8443 → App</li>
+<li>App ↓1433 → DB</li>
+</ul>
+<h3 id="九测试环境部署">九、测试环境部署</h3>
+<ul>
+<li>资源：Spoke-Test，10.20.0.0/16（DEV、UAT、SIT）</li>
+<li>与生产：逻辑隔离，避免误操作。</li>
+</ul>
+<h3 id="十private-link-规划">十、Private Link 规划</h3>
+<p>很多企业目前要求 PaaS 不允许公网访问（Storage、Key Vault、SQL、OpenAI、AI Search 等）。采用 Private Endpoint 架构：VM → Private Endpoint → Storage Account，访问全程 Private IP（例如 10.10.3.8），而不是公网。</p>
+<h3 id="十一统一互联网出口">十一、统一互联网出口</h3>
+<p>大型企业通常要求所有访问互联网的流量必须经过审计。架构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Spoke → UDR → Azure Firewall → NAT Gateway → Internet</code></pre>
+  </div><p>好处：统一日志、统一审计、统一威胁检测。</p>
+<h3 id="十二企业-dns-规划">十二、企业 DNS 规划</h3>
+<p>推荐部署 Azure DNS Private Resolver，实现总部 DNS ⇄ Azure DNS 互通。例如 sql-prod.company.com、storage-prod.company.com，总部能解析，Azure 也能解析。</p>
+<h3 id="十三关键技术与解决要点">十三、关键技术与解决要点</h3>
+<ol>
+<li><strong>VNet Peering</strong>：解决 Hub ↔ Spoke 互通问题。特点：低延迟、高带宽、走微软骨干网。</li>
+<li><strong>UDR 路由</strong>：解决业务流量绕过防火墙问题。配置：0.0.0.0/0 → Azure Firewall。</li>
+<li><strong>BGP 动态路由</strong>：解决新增分支、新增网段时频繁修改路由问题。架构：Route Server + ExpressRoute + SD-WAN。</li>
+<li><strong>Zero Trust</strong>：零信任网络。原则：Never Trust, Always Verify。实现：Private Link、MFA、Conditional Access、Firewall。</li>
+<li><strong>网络微隔离</strong>：使用 NSG、ASG 实现 Web 只能访问 App、App 只能访问 DB、禁止横向移动。</li>
+<li><strong>高可用设计</strong>：关键资源（VPN Gateway AZ、Firewall AZ、Bastion、Route Server）全部启用 Availability Zone，避免区域故障。</li>
+</ol>
+<h3 id="十四最终企业级参考架构">十四、最终企业级参考架构</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>              Headquarters 172.16.0.0
+                     │
+               ExpressRoute
+                     │
+              Hub Network 10.0.0.0/16
+                     │
+    ┌────────────────┼────────────────┐
+    │                │                │
+Azure Firewall   Route Server    Bastion
+    │
+    ├── Prod ── Web / App / DB
+    │        ├─ Private Endpoint
+    │        ├─ Key Vault
+    │        ├─ Storage
+    │        └─ Azure SQL
+    ├── Test
+    ├── DR
+    └── Shared</code></pre>
+  </div><p>这套架构基本就是微软 CAF Landing Zone、Enterprise Scale Landing Zone 以及大多数金融、制造、零售和跨国企业在 Azure 上落地时采用的标准企业网络架构模型。它能够同时满足总部、分部、IDC、云端业务、混合云、私网访问、统一安全管控、高可用和未来扩展的要求。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

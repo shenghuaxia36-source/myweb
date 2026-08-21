@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Technology | Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="My Web">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+    
+      <link href="/myweb/technology/index.xml" rel="alternate" type="application/rss+xml" title="Gourney Of oG-Go" />
+      <link href="/myweb/technology/index.xml" rel="feed" type="application/rss+xml" title="Gourney Of oG-Go" />
+      
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Technology">
+	<meta property="og:description" content="Welcome to Technology.">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="website">
+
+	<meta itemprop="name" content="Technology">
+	<meta itemprop="description" content="Welcome to Technology.">
+	<meta itemprop="wordCount" content="3">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Technology">
+	<meta name="twitter:description" content="Welcome to Technology.">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-section is-section">
+
+  <header>
+    <div class="pb3-m pb6-l bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+      
+      <div class="tc-l pv3 ph3 ph4-ns">
+        <h1 class="f2 f-subheadline-l fw2 light-silver mb0 lh-title">
+          Technology
+        </h1>
+        
+      </div>
+    </div>
+  </header>
+
+<main class="pb7" role="main">
+  
+  
+
+  <article class="pa3 pa4-ns nested-copy-line-height">
+    <section class="cf ph3 ph5-l pv3 pv4-l f4 tc-l center measure-wide lh-copy nested-links mid-gray"><p>Welcome to Technology.</p>
+</section>
+    <section class="flex-ns mt5 flex-wrap justify-around">
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/fruitstation-tech/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="水果摊技术栈">水果摊技术栈</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 前端
+        BROWSER[浏览器]
+        VUE[Vue3 + TypeScript + Element Plus]
+        SPA[单页面应用 SPA]
+        COMPONENTS[登录/注册/商品/购物车/订单 组件]
+    end
+    subgraph 后端
+        SB[Spring Boot 3]
+        SECURITY[Spring Security 认证/授权/加密]
+        JWT[JWT 无状态登录]
+        SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务]
+    end
+    subgraph 数据层
+        MYSQL[(MySQL)]
+        REDIS[(Redis)]
+        RABBITMQ{{RabbitMQ}}
+    end
+    BROWSER --&gt;|HTTPS| VUE
+    VUE --&gt; SPA
+    SPA --&gt; COMPONENTS
+    VUE --&gt;|REST API| SB
+    SB --&gt; SECURITY
+    SECURITY --&gt; JWT
+    SB --&gt; SERVICES
+    SERVICES --&gt; MYSQL
+    SERVICES --&gt; REDIS
+    SERVICES --&gt; RABBITMQ</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>技术栈选型为 Vue3 + TypeScript + Element Plus（前端）和 Spring Boot 3 + Spring Security + JWT（后端），是国内企业级电商系统最成熟的组合之一。</li>
+<li>Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。</li>
+<li>TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。</li>
+<li>Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。</li>
+<li>JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。</li>
+<li>单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx + SpringBoot 双实例可达 100<del>300 并发用户和 50</del>100 QPS。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Vue3 组件化开发</strong>：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。</li>
+<li><strong>数据响应式</strong>：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。</li>
+<li><strong>Composition API</strong>：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。</li>
+<li><strong>TypeScript 类型检查</strong>：在开发时即可发现类型错误（如 <code>price = &quot;abc&quot;</code> 赋值给 number 类型），减少运行时 Bug。</li>
+<li><strong>Element Plus UI 组件库</strong>：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。</li>
+<li><strong>Spring Boot 3 自动配置</strong>：通过 <code>@SpringBootApplication</code> 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。</li>
+<li><strong>Spring Security 安全框架</strong>：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。</li>
+<li><strong>JWT 无状态登录</strong>：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 <code>Authorization: Bearer Token</code> 传递，服务器无状态、支持集群和微服务。</li>
+<li><strong>框架协作流程</strong>：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。</li>
+<li><strong>容量评估</strong>：100 活跃用户 + 5000 商品 + 3000 单/天的场景，单台 4C8G 足够；采用 Nginx + SpringBoot 双实例 + Redis + MySQL 可达 100<del>300 并发、50</del>100 QPS、10000+ 订单/天、响应时间 100ms~500ms。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：</p>
+    </div>
+    <a href="/myweb/technology/personalweb/fruitstation-tech/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/github-pages-hugo/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="github-pages-和-hugo-配置">GitHub Pages 和 Hugo 配置</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 本地开发
+        HUGO[Hugo 项目]
+        TOML[hugo.toml 配置]
+        THEME[PaperMod 主题 - git submodule]
+        CONTENT[content/ Markdown 文章]
+    end
+    subgraph GitHub
+        REPO[GitHub Repository]
+        ACTION[GitHub Actions - hugo.yml]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph Cloudflare DNS
+        CNAME[CNAME: www -&gt; 用户名.github.io]
+        DOMAIN[自定义域名 www.shenghua.au]
+    end
+    CONTENT --&gt; HUGO
+    TOML --&gt; HUGO
+    THEME --&gt; HUGO
+    HUGO --&gt;|git push 源码| REPO
+    REPO --&gt;|push to main 触发| ACTION
+    ACTION --&gt;|hugo 编译生成 public/| PAGES
+    PAGES --&gt;|static/CNAME 绑定域名| DOMAIN
+    DOMAIN --&gt; CNAME</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。</li>
+<li>完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。</li>
+<li>GitHub Actions 工作流使用 <code>peaceiris/actions-hugo@v3</code> 安装 Hugo，编译后通过 <code>actions/deploy-pages@v4</code> 部署到 Pages。</li>
+<li>自定义域名需在 <code>static/CNAME</code> 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 <code>用户名.github.io</code>。</li>
+<li>Hugo 常见配置包括 baseURL、菜单、中文配置（<code>hasCJKLanguage = true</code>）和 PaperMod 搜索功能。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Hugo 主题以 git submodule 引入</strong>：使用 <code>git submodule add</code> 添加 PaperMod 主题，GitHub Actions 中需设置 <code>submodules: recursive</code> 确保主题被正确拉取。</li>
+<li><strong>GitHub Actions 工作流</strong>：触发条件为 push 到 main 分支，需要 <code>pages: write</code> 和 <code>id-token: write</code> 权限，使用 <code>concurrency</code> 控制部署队列。</li>
+<li><strong>Pages Source 设置</strong>：必须选择 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则会因仓库中没有 public 目录而导致 404。</li>
+<li><strong>CNAME 文件</strong>：放在 <code>static/CNAME</code> 中，Hugo 编译后会自动输出到 <code>public/CNAME</code>，GitHub Pages 据此绑定自定义域名。</li>
+<li><strong>Cloudflare DNS 配置</strong>：子域名用 CNAME 记录指向 <code>用户名.github.io</code>；根域名需配置 GitHub Pages 官方的 4 个 A 记录。</li>
+<li><strong>中文配置</strong>：设置 <code>languageCode = &quot;zh-cn&quot;</code>、<code>defaultContentLanguage = &quot;zh-cn&quot;</code>、<code>hasCJKLanguage = true</code> 确保中文正常处理。</li>
+<li><strong>PaperMod 搜索</strong>：配置 <code>[outputs] home = [&quot;HTML&quot;,&quot;RSS&quot;,&quot;JSON&quot;]</code> 启用搜索功能。</li>
+<li><strong>推荐目录结构</strong>：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：</p>
+    </div>
+    <a href="/myweb/technology/personalweb/github-pages-hugo/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/personwebforfree/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="免费个人网站发布方案">免费个人网站发布方案</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 本地开发环境
+        WRITE[编写 Markdown 文章]
+        HUGO[Hugo 编译引擎]
+        LOCAL[hugo server -D 本地预览]
+    end
+    subgraph GitHub 仓库
+        SOURCE[源码: content/ hugo.toml themes/]
+        GITIGNORE[.gitignore: /public /resources]
+        ACTION[GitHub Actions 工作流]
+    end
+    subgraph 云端构建与发布
+        CICD[GitHub Actions 虚拟机]
+        BUILD[hugo --minify 编译]
+        PUBLIC[public/ 静态HTML]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph 可选增强
+        CF[Cloudflare CDN 加速]
+        DOMAIN[自定义域名]
+        SSL[免费 SSL 证书]
+    end
+    WRITE --&gt; HUGO
+    HUGO --&gt; LOCAL
+    WRITE --&gt;|git push| SOURCE
+    SOURCE --&gt; ACTION
+    ACTION --&gt; CICD
+    CICD --&gt; BUILD
+    BUILD --&gt; PUBLIC
+    PUBLIC --&gt; PAGES
+    PAGES --&gt; CF
+    CF --&gt; DOMAIN
+    DOMAIN --&gt; SSL</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。</li>
+<li>推荐架构：Hugo + PaperMod + GitHub Pages + Cloudflare CDN + 自定义域名，除域名外全部免费。</li>
+<li>Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。</li>
+<li>推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。</li>
+<li>Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Hugo 编译原理</strong>：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。</li>
+<li><strong>static/ vs assets/</strong>：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。</li>
+<li><strong>Page Bundles</strong>：目录型文章结构（content/posts/my-post/index.md + cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。</li>
+<li><strong>.gitignore 配置</strong>：必须包含 <code>/public</code>、<code>/resources</code>、<code>.hugo_build.lock</code>，防止本地编译产物上传到 GitHub。</li>
+<li><strong>GitHub Actions Source 设置</strong>：Settings → Pages → Source 必须选 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则因仓库无 public 目录会 404。</li>
+<li><strong>两种部署方案对比</strong>：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。</li>
+<li><strong>URL 映射规则</strong>：<code>content/about.md</code> → <code>public/about/index.html</code> → <code>/about/</code>；<code>content/posts/first-post.md</code> → <code>/posts/first-post/</code>。</li>
+<li><strong>成本分析</strong>：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。</li>
+<li><strong>PaperMod 主题</strong>：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。</li>
+<li><strong>IT 基础设施工程师推荐组合</strong>：Hugo + PaperMod + GitHub Pages + Cloudflare CDN + 自定义域名，适合长期维护个人技术品牌。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/personwebforfree/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/mysql/mysql-back-resotre-with-zip/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="带压缩的-mysql-备份与恢复">带压缩的 MySQL 备份与恢复</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份流程[&#34;备份流程（逻辑备份 + 管道压缩）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;]
+        B --&gt; C{&#34;压缩工具选择&#34;}
+        C --&gt;|标准| D[&#34;gzip&#34;]
+        C --&gt;|高压缩率| E[&#34;xz -9&#34;]
+        C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;]
+        D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)]
+        E --&gt; H[(&#34;mydb.sql.xz&#34;)]
+        F --&gt; G
+    end
+
+    subgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;]
+        G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;]
+        H --&gt; J[&#34;xzcat&#34;]
+        I --&gt; K[&#34;mysql -u root -p mydb&#34;]
+        J --&gt; K
+        K --&gt; L[(&#34;✅ 数据恢复完成&#34;)]
+    end
+
+    subgraph 检查操作[&#34;备份文件检查&#34;]
+        G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;]
+        G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件</li>
+<li>支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip）</li>
+<li>恢复时用 <code>gunzip &lt;</code>、<code>xzcat</code>、<code>pigz -dc</code> 流式解压直接管道给 mysql，同样不产生中间文件</li>
+<li>生产环境推荐参数组合：<code>--single-transaction --routines --triggers --events</code></li>
+<li>备份文件建议带时间戳命名（<code>$(date +%Y%m%d_%H%M%S)</code>），便于管理和追溯</li>
+<li>可用 <code>zcat | head</code>、<code>zcat | wc -l</code>、<code>ls -lh</code> 不解压检查压缩包内容和大小</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>单库 gzip 备份</strong>：<code>mysqldump -u root -p mydb | gzip &gt; mydb_$(date +%F).sql.gz</code>，导出流直接进 gzip</li>
+<li><strong>对应恢复</strong>：<code>gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb</code>，解压流直接进 mysql</li>
+<li><strong>全库备份</strong>：<code>--all-databases</code> 备份所有数据库，恢复时不需要指定库名</li>
+<li><strong>xz -9 高压缩率</strong>：适合存储空间紧张的归档场景，恢复用 <code>xzcat mydb.sql.xz | mysql</code></li>
+<li><strong>pigz 多核压缩</strong>：<code>yum install pigz</code> 或 <code>apt install pigz</code> 安装，<code>pigz -9</code> 备份、<code>pigz -dc</code> 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用</li>
+<li><strong><code>--single-transaction</code></strong>：InnoDB 热备份，不锁表</li>
+<li><strong><code>--routines / --triggers / --events</code></strong>：确保存储过程、函数、触发器、事件完整备份</li>
+<li><strong>时间戳命名</strong>：<code>$(date +%Y%m%d_%H%M%S)</code> 生成如 <code>mydb_20260806_164500.sql.gz</code> 的文件名</li>
+<li><strong>不解压检查</strong>：<code>zcat mydb.sql.gz | head</code> 查看内容，<code>zcat | wc -l</code> 统计行数，<code>ls -lh</code> 查看文件大小</li>
+<li><strong>标准做法</strong>：<code>mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz</code> 是生产环境逻辑备份的标准做法</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>常用的 mysqldump 备份并压缩命令如下。</p>
+    </div>
+    <a href="/myweb/technology/vm/mysql/mysql-back-resotre-with-zip/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/mysql/mysql-backup-encry/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="密文-mysql-备份备份脚本中密码的安全管理">密文 MySQL 备份（备份脚本中密码的安全管理）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;]
+        direction TB
+        A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;]
+        B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;]
+        C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;]
+        D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;]
+        E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;]
+        A --&gt; C --&gt; D --&gt; E
+    end
+
+    subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;]
+        F[&#34;专用 backup 用户&lt;br/&gt;+ mysql_config_editor&lt;br/&gt;+ crontab 定时任务&#34;]
+    end
+
+    subgraph 备份执行流程[&#34;备份执行流程&#34;]
+        G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;]
+        H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)]
+    end
+
+    D --&gt; F
+    E --&gt; F
+    F -.采用.-&gt; G</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>不要把密码直接写在备份脚本或命令行里（<code>mysqldump -u root -pMyPassword</code>），执行时可被 <code>ps -ef</code> 或 <code>history</code> 看到密码</li>
+<li>推荐方法1：使用 <code>~/.my.cnf</code> 配置文件保存凭据，设置 <code>chmod 600</code> 权限，mysql/mysqldump 自动读取，无需输入密码</li>
+<li>推荐方法2：<code>mysql_config_editor</code>（MySQL 5.6+）将密码加密存储在 <code>~/.mylogin.cnf</code> 中，安全性高于 <code>.my.cnf</code></li>
+<li>推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多</li>
+<li>不推荐：环境变量 <code>MYSQL_PWD</code>（可被 <code>env</code> 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全）</li>
+<li>Linux + 定时 crontab + mysqldump 场景推荐 <code>~/.my.cnf</code> 或 <code>mysql_config_editor</code>；生产环境最佳组合是&quot;专用 backup 用户 + mysql_config_editor + crontab&quot;</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>明文密码的风险</strong>：<code>mysqldump -u root -pMyPassword</code> 的密码会出现在进程列表（<code>ps -ef</code>）和 shell 历史（<code>history</code>）中</li>
+<li><strong><code>~/.my.cnf</code> 方案</strong>：在 <code>[client]</code> 段写入 user/password，<code>chmod 600 /root/.my.cnf</code> 限制仅属主可读，之后 <code>mysql -e &quot;show databases;&quot;</code> 无需密码</li>
+<li><strong><code>mysql_config_editor</code> 方案</strong>：<code>mysql_config_editor set --login-path=backup --password</code> 生成加密的 <code>~/.mylogin.cnf</code>；<code>print --all</code> 查看时密码不会显示；调用时用 <code>--login-path=backup</code></li>
+<li><strong>专用备份账号</strong>：<code>CREATE USER 'backup'@'localhost'</code> 并仅授予 <code>SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES</code>，实现最小权限原则</li>
+<li><strong>环境变量的坑</strong>：<code>export MYSQL_PWD=MyPassword</code> 虽然使命令行不含密码，但 <code>env</code> 和某些进程检查工具仍可能看到</li>
+<li><strong>凭据与压缩管道组合</strong>：免密后备份脚本简化为 <code>mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz</code></li>
+<li><strong>场景化选型</strong>：简单场景用 <code>.my.cnf</code>，生产环境用&quot;backup 用户 + mysql_config_editor + crontab&quot;，密码既不出现在脚本里也不出现在进程列表中</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>是的，不要把密码直接写在脚本里：</p>
+    </div>
+    <a href="/myweb/technology/vm/mysql/mysql-backup-encry/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/mysql/mysql-bin-restored/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="mysqldump--binlog-恢复pitr-指定时间点恢复">mysqldump + binlog 恢复（PITR 指定时间点恢复）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;]
+        B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;]
+        A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;]
+        C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 + 7天binlog&#34;)]
+        D --&gt; E
+    end
+
+    subgraph 故障阶段[&#34;故障发生&#34;]
+        F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;]
+    end
+
+    subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;]
+        G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;]
+        G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;]
+        H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;]
+        I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)]
+    end
+
+    E --&gt; G
+    F -.触发.-&gt; G</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>mysqldump + binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 + binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery）</li>
+<li>前提是 MySQL 开启了 binlog（<code>log_bin = ON</code>），并合理配置 binlog 保留期（如 7 天）</li>
+<li><code>--master-data=2</code> 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点</li>
+<li>恢复分两步：先恢复全量备份（回到备份时刻），再用 <code>mysqlbinlog</code> 从记录的位置回放到目标时间点</li>
+<li>最常见场景是&quot;恢复到误删前一分钟&quot;：通过 <code>--stop-datetime</code> 让误删语句（如 DELETE）不被执行</li>
+<li>也可以不关心 Position，直接用 <code>--start-datetime</code> / <code>--stop-datetime</code> 按时间恢复</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>前提检查</strong>：<code>SHOW VARIABLES LIKE 'log_bin'</code> 确认 binlog 已开启，<code>SHOW MASTER STATUS</code> 查看当前 binlog 文件和位置</li>
+<li><strong><code>--master-data=2</code></strong>：在备份 SQL 文件头部写入注释形式的 <code>CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS</code>，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里</li>
+<li><strong><code>--single-transaction</code></strong>：InnoDB 一致性快照热备份，备份过程不锁表</li>
+<li><strong><code>--routines --triggers --events</code></strong>：确保存储过程、触发器、事件一并备份</li>
+<li><strong>恢复前建空库</strong>：<code>CREATE DATABASE mydb;</code> 后再 <code>mysql mydb &lt; mydb_full.sql</code> 导入</li>
+<li><strong>binlog 回放起点</strong>：使用备份文件中记录的 <code>--start-position</code>（如 456789），可跨多个 binlog 文件依次回放</li>
+<li><strong>查找误删时间</strong>：对 ROW 格式 binlog 用 <code>mysqlbinlog --base64-output=DECODE-ROWS -v</code> 解码查看具体 SQL 和时间戳</li>
+<li><strong>精确止损</strong>：<code>--stop-datetime</code> 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复</li>
+<li><strong>binlog 保留策略</strong>：MySQL 5.x 用 <code>expire_logs_days=7</code>，MySQL 8 用 <code>binlog_expire_logs_seconds=604800</code>（同样 7 天）</li>
+<li><strong>生产脚本组合</strong>：每日 <code>mysqldump --all-databases | gzip &gt; /backup/full_$(date +%F).sql.gz</code> + binlog 保留，构成完整 PITR 体系</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>mysqldump + binlog 是 MySQL 最经典的恢复方案：</p>
+    </div>
+    <a href="/myweb/technology/vm/mysql/mysql-bin-restored/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/command/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="command">command</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    A[&#34;command.txt&lt;br/&gt;(空文件)&#34;] --&gt; B[&#34;无内容可处理&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>源文件 <code>vm/vm/command.txt</code> 在文本提取结果中内容为空。</li>
+<li>该文件不包含任何命令记录或说明文字。</li>
+<li>保留同名 MD 文件以保证文档集完整性。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>源文件 <code>command.txt</code> 提取后无任何正文内容。</li>
+<li>无法从空文件生成架构图或技术摘要。</li>
+<li>如后续补充了命令记录，可按标准结构（架构图 / 摘要 / 技术要点 / 原文内容）重新生成。</li>
+<li>建议将日常运维命令按主题归档，便于检索与复用。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>源文件 <code>vm/vm/command.txt</code> 为空文件，无原文内容。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/command/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/container-comunication-over-bridge/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机容器网桥的建立与两个容器的互通">虚机容器网桥的建立与两个容器的互通</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;]
+        eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;]
+
+        subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;]
+            docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;]
+            veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;]
+                pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;]
+            end
+            veth1 --- pg
+            docker0 --- veth1
+        end
+
+        subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;]
+            br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;]
+            veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;]
+                web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;]
+            end
+            veth2 --- web
+            br --- veth2
+        end
+
+        eth0 --- docker0
+        eth0 --- br
+    end
+
+    外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0
+    本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0
+
+    web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg
+    web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg
+
+    容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>主机上存在两个独立的 Docker Bridge 网络：<code>docker0</code>（172.17.0.1/16，Docker 默认）和 <code>br-4d44c079d811</code>（172.18.0.1/16，对应自定义网络 <code>chery-tools_default</code>）。</li>
+<li>自定义网桥可通过 <code>docker network create</code> 或 Docker Compose 自动创建，Linux 侧接口名规则为 <code>br-&lt;网络ID前12位&gt;</code>。</li>
+<li>不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。</li>
+<li>网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。</li>
+<li>Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。</li>
+<li>每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 <code>lsns</code>、<code>nsenter</code> 查看与进入。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>两种网桥的来源</strong>：<code>docker0</code> 是 Docker 安装时自动创建的默认 Bridge 网络；<code>br-4d44c079d811</code> 是执行 <code>docker network create app-net</code> 或 <code>docker compose up</code>（自动生成 <code>&lt;project&gt;_default</code> 网络）后，Linux 自动创建的网桥接口，名字为 <code>br-</code> + 网络 ID 前 12 位。</li>
+<li><strong>默认网段分配</strong>：<code>docker0</code> 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 <code>.2</code> 开始（<code>.1</code> 是网桥自身网关）。可用 <code>--subnet</code> / <code>--gateway</code> 手动指定。</li>
+<li><strong>veth pair 连接容器与网桥</strong>：每个容器启动时创建一对 veth，一端在容器内命名为 <code>eth0@ifN</code>，另一端（如 <code>veth61d83e0@if2</code>）挂在宿主机网桥上，<code>master docker0</code> / <code>master br-xxx</code> 即其归属。</li>
+<li><strong>网络隔离机制</strong>：iptables 的 DOCKER 链中 <code>! -i br-xxx -o br-xxx -j DROP</code> 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。</li>
+<li><strong>方法一（推荐）——同一网络</strong>：<code>docker run --network app-net nginx</code> 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。</li>
+<li><strong>方法二——容器多网络（双网卡）</strong>：<code>docker network connect bridge web-container</code> 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。</li>
+<li><strong>方法三——宿主机路由（不推荐）</strong>：<code>sysctl -w net.ipv4.ip_forward=1</code> 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。</li>
+<li><strong>方法四——Compose 多网络分层</strong>：在 <code>docker-compose.yml</code> 中定义 <code>frontend</code> / <code>backend</code> 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。</li>
+<li><strong>NAT 规则自动化</strong>：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 <code>iptables -t nat -L -n -v</code> 查看。</li>
+<li><strong>排查工具链</strong>：<code>docker network inspect &lt;net&gt; --format '{{len .Containers}}'</code> 查网络内容器数；<code>lsns -t net</code> 列出网络命名空间；<code>docker inspect -f '{{.State.Pid}}'</code> 取容器 PID；<code>nsenter -t &lt;pid&gt; -n ip addr</code> 进入容器 netns 查看其内部视角的 eth0。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>从你的输出可以确认：确实是两个独立的 Docker 网络。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/container-comunication-over-bridge/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/databackup-container/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机中容器数据的备份">虚机中容器数据的备份</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph HV[&#34;Hyper-V&#34;]
+        subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;]
+            subgraph DOCK[&#34;Docker&#34;]
+                PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;]
+                VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;]
+                PG --- VOL
+            end
+            BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;]
+            DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;]
+            PG --&gt; DUMP --&gt; BK
+            VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;]
+        end
+        VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM
+        VEEAM -.-&gt;|同时备份 SQL 文件| BK
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。</li>
+<li>推荐命令：<code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql</code>——pg_dump 在容器内运行，但 <code>&gt;</code> 重定向发生在 VM 上。</li>
+<li>很多 PostgreSQL 容器通过 volume 挂载部署（<code>/data/postgres:/var/lib/postgresql/data</code>），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 <code>docker inspect postgres</code> 查看 Mounts 部分即可确认。</li>
+<li>Hyper-V + Ubuntu VM + 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。</li>
+<li>拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>场景1（容器内执行，不推荐）：<code>docker exec -it postgres bash</code> 后 <code>pg_dump -U postgres dbname &gt; backup.sql</code>，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。</li>
+<li>场景2（宿主机执行，推荐）：<code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql</code>，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。</li>
+<li>场景3（Docker Volume）：compose 中 <code>volumes: - /data/postgres:/var/lib/postgresql/data</code> 时，数据实际在 Ubuntu VM 的 /data/postgres，<code>docker inspect postgres</code> 的 Mounts 显示 <code>&quot;Source&quot;: &quot;/data/postgres&quot;, &quot;Destination&quot;: &quot;/var/lib/postgresql/data&quot;</code>。</li>
+<li>每日逻辑备份脚本：<code>mkdir -p /backup/postgres</code> + <code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date +%F).sql</code>。</li>
+<li>Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 + 数据库级恢复两层保障。</li>
+<li>确认数据实际存放位置：<code>docker inspect postgres | grep Source</code> 或直接 <code>docker inspect postgres</code> 查看 &ldquo;Mounts&rdquo;，判断数据库文件在容器内部还是映射到 VM 目录。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这取决于你在哪里执行 pg_dump 命令。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/databackup-container/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/dmz-nginx/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="dmz-反向代理dmz-nginx">DMZ 反向代理（dmz-nginx）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    U[&#34;互联网用户 / 客户端&#34;] --&gt;|HTTPS 443| FG[&#34;FortiGate 防火墙&lt;br/&gt;外网 IP: 203.0.113.10&lt;br/&gt;只做 L3/L4 端口转发/DNAT&#34;]
+    FG --&gt;|HTTPS 443 (VIP → 10.0.1.100)| NGX[&#34;DMZ: Nginx 反向代理&lt;br/&gt;10.0.1.100&lt;br/&gt;持有 SSL 证书，SSL 卸载&#34;]
+    NGX --&gt;|HTTP 80 (X-Forwarded-*)| BE[&#34;内网后端业务服务器&lt;br/&gt;192.168.10.50:8080&lt;br/&gt;无需配置 SSL 证书&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>FortiGate 工作在网络层（L3/L4），负责 IP/端口级别的访问控制；反向代理工作在应用层（L7），深入理解 HTTP/HTTPS 报文，两者是纵深防御的互补关系而非替代关系。</li>
+<li>反向代理的核心价值：隐蔽内部真实网络架构、统一 Web 入口、收敛暴露面（无需映射 10 个外网 IP/端口）。</li>
+<li>SSL/TLS 证书统一管理与卸载（SSL Termination）：证书只在 Nginx 上配置一次，后端服务器可使用纯 HTTP，显著降低后端 CPU 压力并简化证书续期运维。</li>
+<li>提供完整的 Nginx 配置实例（HTTP 强制 301 跳转 HTTPS、TLSv1.2/1.3、proxy_pass 转发、X-Forwarded-* 透传真实客户端 IP）与 FortiGate VIP/防火墙策略配置。</li>
+<li>提供四步验证方案：curl 证书握手验证、301 重定向验证、后端 tcpdump 抓包验证 SSL 已卸载、后端日志验证真实 IP 传递。</li>
+<li>证书更新零中断：只需更新 Nginx 的 certs 目录并 <code>nginx -s reload</code>，无需重启后端业务或变动 FortiGate。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>FortiGate 是&quot;保安门卫&quot;（查验身份、放行端口），反向代理是&quot;前台接待员&quot;（引导访客到正确房间并精细管理行为）。</li>
+<li>FortiGate 配置虚拟 IP（VIP）：External IP 203.0.113.10 → Mapped IP 10.0.1.100，TCP 443→443 端口转发。</li>
+<li>FortiGate 防火墙策略：wan1 → dmz，Destination 为 VIP-HTTPS-To-Nginx，Service HTTPS，Action ACCEPT，NAT 关闭以保留客户端真实 IP。</li>
+<li>Nginx 80 端口 server 块使用 <code>return 301 https://$host$request_uri;</code> 强制跳转 HTTPS。</li>
+<li>Nginx 443 server 开启 <code>listen 443 ssl http2</code>，配置 <code>ssl_protocols TLSv1.2 TLSv1.3</code>、<code>ssl_ciphers HIGH:!aNULL:!MD5</code>、<code>ssl_session_cache shared:SSL:10m</code>。</li>
+<li>SSL 卸载核心：<code>proxy_pass http://192.168.10.50:8080;</code> 后端无需证书，同时通过 <code>proxy_set_header X-Real-IP / X-Forwarded-For / X-Forwarded-Proto https</code> 传递真实客户端信息。</li>
+<li>验证 SSL 卸载：在后端 <code>tcpdump -i any port 8080 -A</code> 抓包，应看到明文 HTTP 请求头及 <code>X-Forwarded-Proto: https</code> 报头。</li>
+<li>运维收益：证书续期零中断（仅 reload Nginx）；CPU 密集的 SSL 加解密全部由 Nginx 承载，内网业务服务器 CPU 占用显著降低。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>已经使用了fortigate搭建了DMZ，为什么还需要搭建反向代理？</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/dmz-nginx/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+    </section>
+    
+		<ul class="pagination pagination-default">
+			<li class="page-item">
+				<a href="/myweb/technology/" aria-label="First" class="page-link" role="button"><span aria-hidden="true">&laquo;&laquo;</span></a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/technology/" aria-label="Previous" class="page-link" role="button"><span aria-hidden="true">&laquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/technology/" aria-label="Page 1" class="page-link" role="button">1</a>
+			</li>
+			<li class="page-item active">
+				<a aria-current="page" aria-label="Page 2" class="page-link" role="button">2</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/3/" aria-label="Page 3" class="page-link" role="button">3</a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/technology/page/3/" aria-label="Next" class="page-link" role="button"><span aria-hidden="true">&raquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/3/" aria-label="Last" class="page-link" role="button"><span aria-hidden="true">&raquo;&raquo;</span></a>
+			</li>
+		</ul></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -204,8 +204,858 @@
 </section>
     <section class="flex-ns mt5 flex-wrap justify-around">
       
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/hybidcloud/application-gateway-nginx/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="application-gateway-与-nginx-的选型与组合">Application Gateway 与 Nginx 的选型与组合</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Internet[&#34;互联网用户&#34;]
+        USER[&#34;用户访问&#34;]
+    end
+
+    subgraph Recommended[&#34;企业生产推荐架构&#34;]
+        AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;]
+        subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;]
+            NG1[&#34;Nginx1&#34;]
+            NG2[&#34;Nginx2&#34;]
+            NG3[&#34;Nginx3&#34;]
+        end
+        subgraph Apps[&#34;后端业务系统&#34;]
+            ERP[&#34;ERP&#34;]
+            CRM[&#34;CRM&#34;]
+            HR[&#34;HR&#34;]
+        end
+    end
+
+    USER --&gt;|HTTPS| AGW
+    AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3
+    NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR
+
+    subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;]
+        AKS[&#34;AKS (Kubernetes)&#34;]
+        ING[&#34;Nginx Ingress&#34;]
+        AGW2[&#34;Application Gateway&#34;]
+        AGW2 --&gt; ING --&gt; AKS
+    end
+
+    subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;]
+        NGX[&#34;单台 Nginx VM&#34;]
+        APP[&#34;Application&#34;]
+        NGX --&gt; APP
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>核心结论：Application Gateway 是企业级<strong>云入口网关</strong>（云网络架构），Nginx 是<strong>应用层反向代理</strong>（应用架构），两者是协同关系而非替代关系。</li>
+<li>功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server + Reverse Proxy + Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy + Load Balancer + WAF），无需安装服务器。</li>
+<li>运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。</li>
+<li>WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。</li>
+<li>成本并非&quot;PaaS 一定便宜&quot;：小规模（如 100 用户、2 台业务服务器 + 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。</li>
+<li>推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>架构责任模型</strong>：Nginx 架构需维护 Linux + Nginx + Patch + Security + HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。</li>
+<li><strong>URL 转发能力</strong>：两者都支持。Nginx 使用 <code>location /erp { proxy_pass http://erp01; }</code> 这类配置；Application Gateway 通过路径规则实现 <code>/erp/* → ERP Pool</code>、<code>/hr/* → HR Pool</code>，效果一样。</li>
+<li><strong>SSL 证书管理差异</strong>：Nginx 需要自己申请证书、导入 <code>ssl_certificate</code> / <code>ssl_certificate_key</code>、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。</li>
+<li><strong>扩展能力对比</strong>：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。</li>
+<li><strong>高可用实现差异</strong>：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。</li>
+<li><strong>WAF 能力</strong>：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。</li>
+<li><strong>成本决策模型</strong>：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。</li>
+<li><strong>场景化方案</strong>：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。</li>
+<li><strong>职责划分原则</strong>：AppGW 管&quot;云边界&quot;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&quot;应用内部&quot;（应用路由、URL 重写、Header 处理、缓存、应用代理）。</li>
+<li><strong>针对 M365 + 企业基础架构 + Azure 混合云场景</strong>的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway + Nginx Ingress 组合。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？</p>
+    </div>
+    <a href="/myweb/technology/hybidcloud/application-gateway-nginx/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/hybidcloud/azure-architechture-of-hd-and-branch/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="总部与数据中心的-azure-架构az-104-知识地图">总部与数据中心的 Azure 架构（AZ-104 知识地图）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Corp[&#34;企业本地网络&#34;]
+        HQ[&#34;总部 Sydney&lt;br/&gt;192.168.0.0/16&#34;]
+        MBA[&#34;分公司A Melbourne&#34;]
+        MBB[&#34;分公司B Brisbane&#34;]
+    end
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBA
+    HQ --&gt;|&#34;MPLS/VPN&#34;| MBB
+    HQ --&gt;|&#34;Fortigate → Internet → Site-to-Site VPN&#34;| GW[&#34;Azure VPN Gateway&lt;br/&gt;(云上的VPN设备)&#34;]
+
+    subgraph AE[&#34;Azure Australia East&#34;]
+        GW
+        subgraph PVNet[&#34;Production-VNet 10.0.0.0/16&#34;]
+            subgraph APPSUB[&#34;App-Subnet 10.0.1.0/24&#34;]
+                LB[&#34;Load Balancer&#34;]
+                A1[&#34;APP1&#34;]
+                A2[&#34;APP2&#34;]
+                A3[&#34;APP3&#34;]
+            end
+            subgraph DBSUB[&#34;DB-Subnet 10.0.2.0/24&#34;]
+                DB[(&#34;数据库&lt;br/&gt;仅允许App访问&#34;)]
+                PE[&#34;Private Endpoint 10.0.2.10&#34;]
+            end
+            MSUB[&#34;Management-Subnet 10.0.3.0/24&#34;]
+            NSG[&#34;NSG: Allow 443&lt;br/&gt;Deny 3389/22&#34;]
+            RT[&#34;Route Table&lt;br/&gt;192.168.1.0/24 → VPN Gateway&#34;]
+            STG[(&#34;Storage Account&lt;br/&gt;GRS 异地冗余&#34;)]
+        end
+    end
+
+    subgraph ASE[&#34;Azure Australia Southeast&#34;]
+        DRV[&#34;DR VNet (灾备)&lt;br/&gt;VNet Peering&#34;]
+    end
+
+    subgraph M365[&#34;M365 / 管理平面&#34;]
+        EID[&#34;Entra ID + MFA&lt;br/&gt;+ Conditional Access&#34;]
+        AZMON[&#34;Azure Monitor&lt;br/&gt;告警: Email/Teams/Webhook&#34;]
+        SEC[&#34;RBAC / PIM / Azure Policy&lt;br/&gt;Defender for Cloud&#34;]
+    end
+
+    USER[&#34;Internet ↓443&#34;] --&gt; LB
+    LB --&gt; A1 &amp; A2 &amp; A3
+    PVNet --&gt;|&#34;VNet Peering&#34;| DRV
+    STG --&gt; PE
+    AZMON -.-&gt; PVNet</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>以&quot;总部（Sydney）+ 分公司 A（Melbourne）+ 分公司 B（Brisbane）MPLS/VPN 互联 + Azure Australia East&quot;的企业场景为主线，逐一讲解 AZ-104 的核心组件：VNet、Subnet、NSG、Route Table、VPN Gateway、Private Endpoint、Private DNS、Load Balancer、Storage Account、Azure Monitor 及零信任安全策略。</li>
+<li><strong>VNet</strong>（Production-VNet 10.0.0.0/16）相当于云上的企业网络（类比总部网络 192.168.0.0/16），承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源。</li>
+<li><strong>Subnet</strong> 实现隔离（App 10.0.1.0/24、DB 10.0.2.0/24、Management 10.0.3.0/24），类比总部的服务器区/办公区/无线区/DMZ 区划分；<strong>NSG</strong> 充当防火墙规则（App Server 只允许 HTTPS 443，Deny 3389/22 防互联网远程登录，数据库仅允许 App 访问）。</li>
+<li><strong>VPN Gateway</strong> 是云上的 VPN 设备，建立总部（经 Fortigate → Internet → VPN）到 Azure 的 Site-to-Site VPN，使总部 192.168.1.x 可直接访问 Azure VM 10.0.1.x；<strong>Route Table</strong>（UDR）控制&quot;去哪走&quot;，如 Destination 192.168.1.0/24 → Next Hop VPN Gateway，让 Azure VM 访问总部 ERP。</li>
+<li><strong>Private Endpoint + Private DNS</strong> 把 PaaS（Storage/SQL/Key Vault）私网化（如 Storage Account 获得 10.0.2.10 内网 IP），Private DNS 使 <code>companystorage.blob.core.windows.net</code> 解析为 10.0.2.10，员工访问只能走企业网络。</li>
+<li><strong>双数据中心设计</strong>：主站 Australia East（Production）+ 灾备站 Australia Southeast（DR），VNet Peering 互联；存储用 GRS（Geo-Redundant Storage）同步到第二数据中心；配合 Load Balancer 高可用/横向扩容、Azure Monitor 监控告警（类比 PRTG/Zabbix/SolarWinds）、Entra ID/RBAC/Defender 零信任治理，覆盖 AZ-104 大部分考点。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>VNet 定义与作用</strong>：相当于 Azure 里的企业网络（类似总部网络），Production-VNet 地址空间 10.0.0.0/16，承载 VM、Storage、Database、Private Endpoint、Load Balancer 全部资源，连接总部、分公司与 Azure 云。</li>
+<li><strong>Subnet 隔离</strong>：就像总部网络划分服务器区/办公区/无线区/DMZ 区，VNet 拆分为 App-Subnet（10.0.1.x 应用）、DB-Subnet（10.0.2.x 数据库）、Management-Subnet（10.0.3.x 监控），实现隔离。</li>
+<li><strong>NSG 规则设计</strong>：类似 Windows Firewall / Cisco ACL / Fortigate Policy；App Server 只允许 Internet → 443 (HTTPS) Allow，Deny 3389 与 22（互联网不能远程登录）；互联网 ↓443 → Web App，数据库仅允许 App 访问。</li>
+<li><strong>Route Table (UDR)</strong>：告诉数据包&quot;去哪走&quot;；例如 Destination 192.168.1.0/24 → Next Hop: VPN Gateway，含义是到总部网络走 VPN，使 Azure VM 能访问总部 ERP。</li>
+<li><strong>VPN Gateway 与 Hub-Spoke</strong>：相当于云上的 VPN 设备，总部 → Fortigate → Internet → VPN → Azure VPN Gateway 建立 Site-to-Site VPN，总部 192.168.1.x 可访问 Azure VM 10.0.1.x；三个城市（Sydney/Melbourne/Brisbane）全部连接 Azure Hub，形成 Hub-Spoke 架构。</li>
+<li><strong>Private Endpoint 私网化</strong>：Azure Storage 默认是 Public Endpoint（任何互联网用户都有可能访问），改为 Private Endpoint（10.0.2.10）后只能走企业网络；建议 Storage、SQL、Key Vault 全部私网化。</li>
+<li><strong>Private DNS 配套机制</strong>：专门给 Private Endpoint 配套——Storage 公网域名 <code>companystorage.blob.core.windows.net</code> 通过 Private DNS 解析为 10.0.2.10，员工使用 <code>https://companystorage.blob.core.windows.net</code> 时自动变成 10.0.2.10 访问。</li>
+<li><strong>Load Balancer 高可用与扩展</strong>：1000 人同时访问时经 Load Balancer 自动分流到 APP1/APP2/APP3；APP1 宕机由 APP2/APP3 继续提供服务（高可用）；增加 APP4/APP5 即可横向扩容。</li>
+<li><strong>存储与双数据中心</strong>：企业文档（项目资料、审计日志、影像文件、备份文件）统一存放 Azure Blob Storage，建议用 GRS 同步到第二数据中心；主站 Australia East（Production）+ 灾备站 Australia Southeast（DR），使用 VNet Peering 连接。</li>
+<li><strong>监控与零信任</strong>：Azure Monitor 监控 CPU/Memory/Storage/Network/Security Event/Application Log，告警条件如 CPU&gt;80%、Storage&gt;90%、VPN Down、VM Stopped，通过 Email/Teams/Webhook 发送（类比 PRTG/Zabbix/SolarWinds）；零信任策略覆盖身份（Entra ID/MFA）、网络（VNet/Subnet/NSG/Private Endpoint）、数据（Storage Encryption/Key Vault/Backup）、运维（RBAC/PIM/Azure Policy/Defender for Cloud）。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这是一个非常好的 AZ-104 学习场景。实际上，如果把你描述的企业环境画出来，你会发现 AZ-104 的核心知识几乎全部都在里面。</p>
+    </div>
+    <a href="/myweb/technology/hybidcloud/azure-architechture-of-hd-and-branch/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/hybidcloud/azure-landing-zone/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="azure-landing-zone-与企业级网络架构">Azure Landing Zone 与企业级网络架构</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph MG[&#34;Tenant / Management Group 层&#34;]
+        ROOT[&#34;Tenant&#34;]
+        PLATFORM[&#34;Platform-MG&lt;br/&gt;Identity / Connectivity / Management&#34;]
+        CORP[&#34;Corp-MG&#34;]
+        ONLINE[&#34;Online-MG&#34;]
+        LZ[&#34;Landing Zones&lt;br/&gt;Prod / NonProd / Sandbox&#34;]
+        ROOT --&gt; PLATFORM &amp; CORP &amp; ONLINE
+        ROOT --&gt; LZ
+    end
+
+    subgraph OnPrem[&#34;企业本地网络&#34;]
+        HQ[&#34;总部（上海）172.16.0.0/16&lt;br/&gt;IT中心/财务/ERP&#34;]
+        BJ[&#34;北京分部 172.17.0.0/16&lt;br/&gt;销售/CRM&#34;]
+        SZ[&#34;深圳分部 172.18.0.0/16&lt;br/&gt;研发团队&#34;]
+        IDC[&#34;本地数据中心 IDC 192.168.0.0/16&lt;br/&gt;Oracle / SAP / AD / 文件服务器&#34;]
+    end
+
+    subgraph Hub[&#34;Hub VNet 10.0.0.0/16&#34;]
+        FW[&#34;Azure Firewall&lt;br/&gt;统一出入口/南北向+东西向&#34;]
+        VPN[&#34;VPN Gateway (VpnGw2AZ)&lt;br/&gt;连接总部/北京/深圳/IDC&#34;]
+        BAS[&#34;Azure Bastion&lt;br/&gt;远程运维 无需公网IP&#34;]
+        RS[&#34;Route Server&lt;br/&gt;BGP动态路由&#34;]
+    end
+
+    subgraph Spokes[&#34;Spoke VNets (VNet Peering)&#34;]
+        PROD[&#34;Spoke-Prod 10.10.0.0/16&lt;br/&gt;Web 10.10.1.0/24 → App 10.10.2.0/24 → DB 10.10.3.0/24&#34;]
+        TEST[&#34;Spoke-Test 10.20.0.0/16&lt;br/&gt;DEV/UAT/SIT 逻辑隔离&#34;]
+        DR[&#34;Spoke-DR&#34;]
+        SHARED[&#34;Shared&#34;]
+    end
+
+    subgraph PaaS[&#34;PaaS 私网化 (Private Endpoint)&#34;]
+        SQL[&#34;Azure SQL&#34;]
+        KV[&#34;Key Vault&#34;]
+        STG[&#34;Storage Account&#34;]
+    end
+
+    USER[&#34;Internet 用户&#34;] --&gt;|App Gateway 443| PROD
+    HQ --&gt;|ExpressRoute / IPSec VPN| VPN
+    BJ --&gt;|Branch VPN| VPN
+    SZ --&gt;|Branch VPN| VPN
+    IDC --&gt;|ExpressRoute| VPN
+    VPN --&gt; FW &amp; RS
+    Hub --&gt;|VNet Peering| PROD &amp; TEST &amp; DR &amp; SHARED
+    PROD --&gt;|Private Endpoint / Private IP| SQL &amp; KV &amp; STG
+    PROD --&gt;|UDR 0.0.0.0/0| FW
+    FW --&gt;|统一出口| INTERNET[&#34;Internet&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>文档前半部分系统介绍 Azure Portal「Network foundation」的 16 个核心网络组件（VNet、NAT Gateway、Public IP、NIC、NSG、ASG、Bastion、Route Table、Route Server、Private Link 系列、Network Security Perimeter、Active Connections 等）及其实际使用场景。</li>
+<li>后半部分以&quot;总部（上海）+ 北京/深圳分部 + 本地 IDC + Azure 云（Production/Test/DR）&ldquo;的真实企业案例，讲解微软 CAF（Cloud Adoption Framework）Landing Zone 与 Hub-Spoke 网络标准架构。</li>
+<li>管理层面采用 Management Group 分层（Platform-MG / Corp-MG / Online-MG），Hub VNet（10.0.0.0/16）集中部署 Azure Firewall、VPN Gateway（VpnGw2AZ）、Bastion、Route Server 四大共享资源。</li>
+<li>接入策略：总部优先 ExpressRoute 企业专线（更稳定、SLA 更高、延迟更低、不走公网），分部通过 Branch VPN 接入 Azure Hub，实现总部 ↔ Azure、总部 ↔ 分部、分部 ↔ Azure 全互通。</li>
+<li>生产 Spoke（10.10.0.0/16）按 Web/App/DB 三层划分子网并用 NSG 控制端口（443/8443/1433），测试 Spoke（10.20.0.0/16）与生产逻辑隔离；PaaS 服务（Storage/Key Vault/SQL/OpenAI/AI Search）全部通过 Private Endpoint 私网化。</li>
+<li>关键技术组合：VNet Peering（低延迟高带宽走微软骨干网）+ UDR（0.0.0.0/0 → Azure Firewall 强制审计）+ BGP 动态路由（Route Server + ExpressRoute + SD-WAN 应对新增分支/网段）+ Zero Trust（Never Trust, Always Verify）+ NSG/ASG 微隔离 + 全组件 Availability Zone 高可用。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>VNet（虚拟网络）</strong>：Azure 网络的基础，相当于企业数据中心的 LAN；为资源提供私有 IP 通信、子网划分、VPN/专线连接、安全与路由控制。三层应用典型划分：VNet 10.0.0.0/16，Web 10.0.1.0/24、App 10.0.2.0/24、DB 10.0.3.0/24。</li>
+<li><strong>生产/测试隔离与 VNet Peering</strong>：VNet-Prod（10.0.0.0/16）与 VNet-Test（10.1.0.0/16）互不影响，需要通信时建立 Peering 即可。</li>
+<li><strong>NAT Gateway</strong>：为无公网 IP 的私有子网资源提供固定公网出口 IP（如 52.180.20.10），方便第三方白名单管理，并避免 SNAT 端口耗尽。</li>
+<li><strong>NSG + ASG 组合</strong>：NSG 类似防火墙/ACL 控制出入站（如 Priority 100 Internet:443 Allow / 200 Internet:* Deny）；ASG 按业务逻辑（ASG-Web/App/DB）而非 IP 分组，服务器扩容（Web01→Web03）时规则无需修改，实现 Web→App(443)、App→DB(1433) 的最小化放通。</li>
+<li><strong>Azure Bastion</strong>：通过 Azure Portal 经 Bastion 安全登录 Windows/Linux VM，无需暴露公网 IP、不开 3389/22 端口，替代 Internet→RDP 直连的高风险方式。</li>
+<li><strong>Route Table (UDR) 与 Route Server</strong>：默认走 Azure System Route，可用 UDR 强制 0.0.0.0/0 下一跳指向 Azure Firewall 实现统一审计；Route Server 基于 BGP 与 SD-WAN 设备动态交换路由，新增网络自动学习，无需手工改 UDR。</li>
+<li><strong>Private Link 三件套</strong>：Private Endpoint 为 PaaS（Storage/SQL/Key Vault/Cosmos DB/App Service）分配私有 IP（如 10.0.1.5），VM 经内网访问而非绕公网；Pending Connections 用于服务提供方审批连接；Private Link Service 用于把自己的内部服务（如 API Gateway + Internal Load Balancer）通过私网发布给外部客户 VNet。</li>
+<li><strong>Network Security Perimeter</strong>：较新的安全能力，为 Storage/Key Vault/SQL/AI 服务定义可信网络边界（VNet-A/VNet-B），拒绝 Internet 和其它订阅的未授权访问，实现更细粒度数据边界保护。</li>
+<li><strong>Hub-Spoke 资源规划</strong>：Hub VNet 10.0.0.0/16 含 AzureFirewallSubnet(10.0.1.0/24)、GatewaySubnet(10.0.2.0/24)、AzureBastionSubnet(10.0.3.0/24)、RouteServerSubnet(10.0.4.0/24)；VPN Gateway 用 VpnGw2AZ SKU，关键组件全部跨 Availability Zone 部署避免区域故障。</li>
+<li><strong>统一出口与 DNS</strong>：所有互联网流量经 Spoke → UDR → Azure Firewall → NAT Gateway → Internet，实现统一日志/审计/威胁检测；部署 Azure DNS Private Resolver 打通总部 DNS 与 Azure DNS，使 sql-prod.company.com、storage-prod.company.com 两边都能解析。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>从截图来看，这是 Azure Portal → Network foundation（网络基础）的导航菜单，包含 Azure 网络服务的核心组件。下面我按照菜单顺序，对每个功能进行介绍，并结合实际场景举例。</p>
+    </div>
+    <a href="/myweb/technology/hybidcloud/azure-landing-zone/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/hybidcloud/azure/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="azure-网络接入与全球分布vnet-接入方式--private-link">Azure 网络接入与全球分布（VNet 接入方式 / Private Link）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Global[&#34;Microsoft Global Network 微软全球骨干网&#34;]
+        VWAN[&#34;Azure Virtual WAN (虚拟广域网)&#34;]
+        subgraph Regions[&#34;各区域 VNet (Regional)&#34;]
+            VNET_US[&#34;美东 VNet&#34;]
+            VNET_EU[&#34;欧洲 VNet&#34;]
+            VNET_HK[&#34;东亚(香港) VNet&#34;]
+        end
+    end
+
+    subgraph OnPrem[&#34;本地机房 / 办公室&#34;]
+        IDC_BJ[&#34;北京 IDC&#34;]
+        OFFICE_LD[&#34;伦敦 Office&#34;]
+    end
+
+    IDC_BJ --&gt;|&#34;ExpressRoute 专线&lt;br/&gt;(运营商对等位置, 最高100Gbps)&#34;| VWAN
+    OFFICE_LD --&gt;|&#34;Site-to-Site IPSec VPN&lt;br/&gt;(本地防火墙 ↔ VPN Gateway)&#34;| VWAN
+
+    VWAN ---|&#34;Global VNet Peering&lt;br/&gt;跨国流量走微软私有骨干网&#34;| VNET_US &amp; VNET_EU &amp; VNET_HK
+
+    subgraph PL[&#34;Private Link 私网访问 PaaS&#34;]
+        VM[&#34;VNet 内 VM&lt;br/&gt;10.0.0.0/16&#34;]
+        PE[&#34;Private Endpoint&lt;br/&gt;10.0.1.5 (私有网卡)&#34;]
+        DNS[&#34;Private DNS Zone&lt;br/&gt;mysqldb.database.windows.net → 10.0.1.5&#34;]
+        SQL[&#34;Azure SQL Database&lt;br/&gt;(公网访问已禁用)&#34;]
+        BLOB[&#34;Azure Blob Storage&#34;]
+        VM --&gt; PE --&gt; SQL
+        VM -.-&gt; DNS
+        PE --&gt; BLOB
+    end
+
+    subgraph Traditional[&#34;传统公网访问 (有风险)&#34;]
+        VM_OLD[&#34;VM&#34;] --&gt;|&#34;绕公网 / 公网IP 40.x.x.x&lt;br/&gt;DDoS与泄露风险&#34;| PAAS_OLD[&#34;PaaS 公网入口&#34;]
+    end
+
+    subgraph IDC_PL[&#34;本地IDC经私网访问云存储&#34;]
+        LOCAL[&#34;本地机房&#34;] --&gt;|&#34;专线/VPN&#34;| VNET2[&#34;Azure VNet&#34;] --&gt;|&#34;Private Link&#34;| BLOB
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>本地网络对接 Azure VNet 有两种官方方式：<strong>Site-to-Site VPN</strong>（公网 IPSec/IKE 加密隧道，本地部署 FortiGate/Palo Alto/Cisco 对接 Azure VPN Gateway，部署快、成本低）和 <strong>Azure ExpressRoute</strong>（经运营商的物理专线，不走向公网，最高 100 Gbps，超低延迟、安全性最高）。</li>
+<li>单个 VNet 具有<strong>区域性</strong>（创建在具体 Region，如 East US、Southeast Asia），子网和 IP 池只存在于该区域机房；全球打通靠 <strong>Global VNet Peering</strong>，跨国流量完全走微软全球高速私有骨干网（Microsoft Global Network），不走互联网。</li>
+<li>全球多分支企业典型架构是 <strong>Azure Virtual WAN</strong>：各办公室就近接入 Azure 节点（北京接北京/香港节点、伦敦接伦敦节点），跨国通信直接跨越微软骨干网，无需自建全球 Mesh VPN；配合 Private Link，任何分支可私密访问全球任何区域的数据库/存储服务。</li>
+<li><strong>Azure Private Link</strong> 的核心作用：把公网上的 Azure PaaS 服务（SQL、存储等）&ldquo;插&quot;进自己的 VNet，生成 Private Endpoint 私有网卡并分配内网 IP（如 10.0.1.5），配合 Private DNS Zone 让域名解析直接返回内网 IP，可彻底禁用 PaaS 的公网访问。</li>
+<li>两大典型场景：企业 VM 访问 Azure SQL 彻底关闭公网入口；本地 IDC 通过普通 VPN/ExpressRoute 连到 VNet 后，用内网 IP 直接访问云上存储，避免配置复杂的 Microsoft Peering 路由。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Site-to-Site VPN 原理与定位</strong>：利用公网建立 IPSec/IKE 加密隧道；本地部署支持 IPSec 的防火墙/路由器（FortiGate、Palo Alto、Cisco）对接 Azure VPN Gateway；适合中小流量或对延迟要求不极其苛刻的场景。</li>
+<li><strong>ExpressRoute 原理与定位</strong>：本地路由器通过专线接入运营商 ExpressRoute Location（对等位置，如中国电信/联通、Equinix、AT&amp;T），再接入微软骨干网；高带宽（最高 100 Gbps）、超低延迟、高可靠、不走公网。</li>
+<li><strong>VNet 区域性 vs 全球连通</strong>：区分&quot;概念分布&quot;与&quot;物理连通&rdquo;——单个 VNet 的子网/IP 池只存在于其所在 Region；多个区域 VNet 通过 Global VNet Peering 直接打通（如美东 ↔ 欧洲）。</li>
+<li><strong>微软骨干网优势</strong>：微软拥有全球最大的私有骨干网络之一（Microsoft Global Network）；跨国 VNet 间数据传输延迟低且极度稳定，完全不经互联网。</li>
+<li><strong>Azure Virtual WAN 三大能力</strong>：就近接入（北京接北京/香港节点、伦敦接伦敦节点）；骨干网传输（跨国通信直接走微软骨干网）；统一路由（配合 Private Link 私密访问全球任意区域的 PaaS）。</li>
+<li><strong>Private Endpoint 机制</strong>：在 VNet 子网中生成私有网卡并分配内网 IP（如 10.0.1.5）；所有访问走微软内部高速骨干网，完全绝缘于互联网。</li>
+<li><strong>Private DNS Zone 联动</strong>：VM 解析 <code>mysqldb.database.windows.net</code> 时直接返回 10.0.1.5（而非公网 40.x.x.x），使访问体验如同局域网内服务器。</li>
+<li><strong>安全闭环</strong>：启用 Private Link 后可直接 Disable public network access，彻底关闭数据库公网入口，防 DDoS 与数据泄露。</li>
+<li><strong>IDC 访问存储的简化</strong>：不用 Private Link 时本地访问 Azure 存储要走公网或配置复杂的 ExpressRoute Microsoft Peering 路由；使用后只需普通专线/VPN 连到 VNet，即可用内网 IP 访问存储桶，降低网络运维和安全合规成本。</li>
+<li><strong>公网访问 vs Private Link 对比</strong>：访问路径（互联网/公网节点 vs 微软内部骨干网）、IP 类型（公网 IP vs 10.x.x.x 私有 IP）、安全级别（较弱需强防火墙 vs 极高完全关闭公网入口）、跨地域/跨租户（均支持，Private Link 还支持安全的 B2B 私网共享）。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>本地机房/办公室要对接到 Azure VNet（虚拟网络），主要有两种官方接入方式，且 Azure 的网络基础设施是完全全球分布的。下面为你拆解接入方式以及它的全球分布特性：</p>
+    </div>
+    <a href="/myweb/technology/hybidcloud/azure/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/hybidcloud/hybid-cloud-of-company-and-azure/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="企业网络与-azure-混合云网络hub-spoke--vpn-gateway--private-endpoint">企业网络与 Azure 混合云网络（Hub-Spoke + VPN Gateway + Private Endpoint）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Corp[&#34;企业总部网络 192.168.0.0/16&#34;]
+        HQ[&#34;HQ 192.168.1.0/24&lt;br/&gt;PC 192.168.1.50&#34;]
+        BRA[&#34;Branch A 192.168.2.0/24&#34;]
+        BRB[&#34;Branch B 192.168.3.0/24&#34;]
+    end
+
+    FG[&#34;Fortigate (FGT100F)&lt;br/&gt;公网出口 110.x.x.x&#34;]
+    HQ &amp; BRA &amp; BRB --&gt; FG
+
+    INET[&#34;Internet&#34;]
+
+    subgraph Azure[&#34;Azure (Australia East)&#34;]
+        GW[&#34;Azure VPN Gateway&lt;br/&gt;20.x.x.x (VpnGw2/VpnGw3)&#34;]
+        subgraph Hub[&#34;VNet-HUB 10.0.0.0/16&#34;]
+            GWSUB[&#34;GatewaySubnet&lt;br/&gt;10.0.254.0/27 (名字必须为 GatewaySubnet)&#34;]
+            FW2[&#34;Azure Firewall&#34;]
+            MGMT[&#34;管理服务&#34;]
+        end
+        subgraph Prod[&#34;VNet-PROD 10.1.0.0/16&#34;]
+            APP[&#34;App Subnet 10.1.1.0/24&lt;br/&gt;APP01 10.1.1.10 / APP02 10.1.1.11&#34;]
+            DB[&#34;DB Subnet 10.1.2.0/24&lt;br/&gt;SQL01 10.1.2.10 / PE 10.1.2.20&#34;]
+            MON[&#34;Management/Monitor Subnet 10.1.3.0/24&#34;]
+            STG[&#34;Storage Account&lt;br/&gt;stcompanyprod001&lt;br/&gt;Public Access: Disabled&#34;]
+        end
+        DR[&#34;VNet-DR 10.2.0.0/16&lt;br/&gt;灾备中心&#34;]
+    end
+
+    FG --&gt;|IPSec Site-to-Site VPN&lt;br/&gt;IKEv2 / PSK| INET
+    INET --&gt; GW
+    GW --&gt; Hub
+    Hub --&gt;|&#34;VNet Peering&#34;| Prod &amp; DR
+    DB --&gt;|&#34;Private Endpoint 10.1.2.20&#34;| STG
+    APP --&gt;|&#34;Internet → App Gateway → LB → APP01/02 对外发布&#34;| INTERNET2[&#34;外部用户&#34;]
+
+    subgraph M365[&#34;M365 管理平面&#34;]
+        ENTRA[&#34;Entra ID / MFA / Conditional Access&#34;]
+        MONA[&#34;Azure Monitor&#34;]
+        DEF[&#34;Defender for Cloud&#34;]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>核心结论：<strong>Azure 生产网段不需要配置公网 IP</strong>——生产 VNet 完全可以是私网（10.x.x.x），通过 Site-to-Site VPN 建立后，与企业内网（192.168.x.x）即可直接互访，业务服务器无需公网 IP。</li>
+<li>整体架构：企业总部（192.168.0.0/16，含 HQ/Branch A/Branch B）以 Fortigate（FGT100F，公网出口 110.x.x.x）为边界，经 IPSec VPN 连接 Azure VPN Gateway（Australia East，20.x.x.x），采用微软推荐的 Hub-Spoke 拓扑。</li>
+<li>三 VNet 分工：VNet-HUB（10.0.0.0/16）承载 VPN Gateway、Azure Firewall 和管理服务；VNet-PROD（10.1.0.0/16）承载应用/数据库/Storage；VNet-DR（10.2.0.0/16）作为灾备中心，通过 VNet Peering互联。</li>
+<li>VPN 三组件：Virtual Network Gateway（生产推荐 VpnGw2 或 VpnGw3，Azure 自动分配公网 IP）、Local Network Gateway（代表企业侧 Fortigate 及其身后 192.168.0.0/16 网段）、Connection（配置预共享密钥 PSK）。</li>
+<li>Fortigate 侧配置 Phase1（IKEv2 认证）与 Phase2（本地 192.168.0.0/16 ↔ 远程 10.0.0.0/8），企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成路由。</li>
+<li>安全闭环：生产 VM 全部私网（外部用户经 Application Gateway → Load Balancer 发布）、Storage 关闭公网访问并用 Private Endpoint（10.1.2.20）内网直访、Entra ID + MFA + Conditional Access、RBAC、Defender for Cloud、Azure Bastion 替代 3389/22 暴露。这是 M365 + 企业基础架构 + Azure 云平台的中大型企业 Hybrid Cloud 标准架构，覆盖 AZ-104 核心知识点。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>生产网段无私网公网 IP 原则</strong>：生产 VM（APP01 10.1.1.10、APP02 10.1.1.11、SQL01 10.1.2.10）全部私网；外部用户访问通过 Internet → Application Gateway → Load Balancer → APP01/APP02 的路径发布。</li>
+<li><strong>GatewaySubnet 命名硬性要求</strong>：Hub VNet（10.0.0.0/16）中创建 VPN 专用子网 10.0.254.0/27，名字必须是 <code>GatewaySubnet</code>，否则 VPN Gateway 无法部署。</li>
+<li><strong>Azure VPN Gateway 本质</strong>：相当于 Azure 上的 VPN 设备（类似 Fortigate/Cisco/Palo Alto），基于 Route-based VPN；SKU 生产推荐 VpnGw2 或 VpnGw3；公网 IP 由 Azure 自动分配（如 20.70.100.10）。</li>
+<li><strong>Local Network Gateway 作用</strong>：代表企业侧 Fortigate 设备，配置其 Public IP（110.x.x.x）与地址空间 192.168.0.0/16，含义是&quot;192 网段在这个设备后面&quot;。</li>
+<li><strong>Connection 与预共享密钥</strong>：创建 Site-to-Site Connection 连接 Virtual Network Gateway 与 Local Network Gateway，两端配置一致的 PSK（如 Azure@2026VPN!）。</li>
+<li><strong>Fortigate IPSec 配置</strong>：Phase1 配置 Authentication（推荐 IKEv2）与对端 Remote Gateway 20.x.x.x；Phase2 配置本地网段 192.168.0.0/16 与远程网段 10.0.0.0/8（覆盖 10.0.0.0/16、10.1.0.0/16、10.2.0.0/16）。</li>
+<li><strong>双端路由配置</strong>：企业侧新增静态路由 Destination 10.0.0.0/8 → Interface Azure VPN；Azure 侧由 VPN Gateway 自动生成到 192.168.0.0/16 的路由，下一跳为 VPN Gateway，最终实现 PC（192.168.1.50）→ Fortigate → VPN Tunnel → Azure（10.1.1.10）的互通。</li>
+<li><strong>云存储私网化</strong>：Storage Account（stcompanyprod001）将 Public Access 设为 Disabled，创建 Private Endpoint（10.1.2.20），总部 192.168.x.x 经 VPN 直接通过内网 IP 访问。</li>
+<li><strong>分层安全策略</strong>：网络层（VPN Gateway、NSG、Private Endpoint）；身份层（Entra ID、MFA、Conditional Access）；权限层（RBAC 的 Owner/Contributor/Reader）；云安全（Defender for Cloud）；运维层（Azure Bastion 代替 3389/22 端口开放到互联网）。</li>
+<li><strong>知识点覆盖</strong>：该架构覆盖 AZ-104 中 VPN Gateway、VNet、Subnet、NSG、Route、Private Endpoint、Storage、Monitor 等绝大多数核心知识点。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>你的场景实际上是一个非常标准的 Azure Hybrid Network Architecture（企业网络与Azure混合云网络）。</p>
+    </div>
+    <a href="/myweb/technology/hybidcloud/hybid-cloud-of-company-and-azure/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/cloudflare-brief/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="cloudflare-业务简介">Cloudflare 业务简介</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph Cloudflare Connectivity Cloud
+        subgraph 应用安全与加速
+            CDN[CDN 全局加速]
+            DDoS[DDoS 防御 L3/4 &amp; L7]
+            WAF[WAF / API安全 / 机器人管理]
+            DNS[权威 DNS / 1.1.1.1]
+        end
+        subgraph 网络与 SASE
+            ZTNA[零信任网络访问 ZTNA]
+            SWG[安全 Web 网关 SWG]
+            NaaS[网络即服务 Magic WAN]
+            MAIL[企业邮件安全]
+        end
+        subgraph 开发者与边缘计算
+            WORKERS[Cloudflare Workers - V8 Isolate]
+            R2[R2 对象存储 - 免流量费]
+            D1[D1 Serverless SQL 数据库]
+            KV[Workers KV / Durable Objects]
+        end
+        subgraph 边缘 AI 平台
+            WAI[Workers AI - 边缘 GPU]
+            AIGW[AI Gateway - 监控/限流/缓存]
+        end
+    end
+    EDGE[全球 330+ 城市边缘网络 Anycast] --&gt; Cloudflare Connectivity Cloud</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Cloudflare 已从 CDN/DDoS 防护厂商演进为全球连接云（Connectivity Cloud）平台，覆盖安全、网络、计算与 AI 四大板块。</li>
+<li>免费版极其慷慨，包含 DNS 解析、CDN 缓存、DDoS 防护、SSL 证书、WAF 规则、Page Rules 等网站功能。</li>
+<li>开发者免费额度涵盖 Workers（每日 10 万次请求）、Pages（无限静态托管 + 每月 500 次构建）、R2（10GB 存储）、D1（每日 500 万次读取）、Workers AI。</li>
+<li>Zero Trust 免费支持最多 50 个用户，提供 ZTNA、DNS 过滤和基础防护规则。</li>
+<li>免费版的主要限制在于机器人防护（仅基础筛查）、大文件/视频传输限制以及无 SLA 保障。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Anycast 边缘网络</strong>：Cloudflare 在全球 330 多个城市部署边缘节点，利用 Anycast 架构实现就近接入和流量分发。</li>
+<li><strong>DDoS 防御</strong>：提供 L3/4 网络层和 L7 应用层的无上限容量抗 DDoS 攻击，免费版即可享受。</li>
+<li><strong>Cloudflare Workers</strong>：基于 V8 Isolate 技术的无服务器计算平台，极速冷启动，直接在边缘节点运行 JavaScript/Wasm，每日免费 10 万次请求。</li>
+<li><strong>R2 对象存储</strong>：兼容 S3 API，最大的特点是免收数据出流量费（No Egress Fees），每月免费 10GB 存储。</li>
+<li><strong>D1 数据库</strong>：Serverless 边缘关系型 SQL 数据库，每天免费 500 万次读取和 10 万次写入。</li>
+<li><strong>Cloudflare Pages</strong>：免费提供无限的静态网站托管以及每月 500 次 Build 编译次数，适合 Hugo/Hexo/前端项目。</li>
+<li><strong>Zero Trust 免费版</strong>：支持最多 50 个用户/终端，包含 ZTNA、DNS 域名过滤、基础防护规则，可替代传统 VPN。</li>
+<li><strong>SSL/TLS 证书</strong>：免费提供通配符 SSL 证书，支持自动续期，并支持 HTTP/2 和 HTTP/3 协议。</li>
+<li><strong>免费 WAF 规则</strong>：5 条自定义 WAF 规则和 3 条 Page Rules，满足基础防护和缓存/重定向策略需求。</li>
+<li><strong>升级触发点</strong>：复杂机器人防护需付费版机器学习与指纹验证；大文件传输需配合 R2 或 Stream；企业级需 SLA 保障和专属客户经理。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>Cloudflare 从最初的&quot;CDN 与 DDoS 防护厂商&quot;已经逐步演进为集应用程序安全、网络与 SASE、边缘计算及 AI 平台于一体的全球连接云（Connectivity Cloud）平台。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/cloudflare-brief/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/cloudflare-domain-managed/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="cloudflare-免费发布域名托管">Cloudflare 免费发布域名托管</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 域名注册商
+        REG[阿里云 / 腾讯云 / GoDaddy / Namecheap]
+    end
+    subgraph Cloudflare 免费版
+        NS1[Nameserver 1: ada.ns.cloudflare.com]
+        NS2[Nameserver 2: sam.ns.cloudflare.com]
+        DNS[免费 DNS 解析]
+        CDN[免费 CDN 加速]
+        SSL[免费 SSL/TLS 证书]
+        DDoS[基础 DDoS 防护]
+        PAGES[Cloudflare Pages 静态托管]
+    end
+    subgraph 代理模式
+        PROX[橙色云朵 Proxied - CDN+防御]
+        DNSONLY[灰色云朵 DNS only - 仅解析]
+    end
+    USER[用户购买域名] --&gt; REG
+    REG --&gt;|修改 DNS 服务器为 Cloudflare NS| NS1
+    REG --&gt; NS2
+    NS1 --&gt; DNS
+    NS2 --&gt; DNS
+    DNS --&gt; CDN
+    DNS --&gt; SSL
+    DNS --&gt; DDoS
+    DNS --&gt; PAGES
+    CDN --&gt; PROX
+    DNS --&gt; DNSONLY</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>使用 Cloudflare 托管（解析）现有域名是完全免费的，包含 DNS 解析、CDN 加速、SSL 证书、DDoS 防护和 Pages 静态托管。</li>
+<li>托管流程为四步：添加域名到 Cloudflare → 扫描确认 DNS 记录 → 修改域名 NS 服务器 → 等待生效。</li>
+<li>修改 NS 地址后通常需要 5 分钟至几小时全球 DNS 生效，Cloudflare 显示 &ldquo;Active&rdquo; 即代表托管成功。</li>
+<li>国内已备案域名需注意：服务器在大陆境内时改 DNS 可能影响备案接入；服务器在香港或海外则无限制。</li>
+<li>橙色云朵（Proxied）表示流量经 Cloudflare 代理提供 CDN 和防御；灰色云朵（DNS only）仅做普通 DNS 解析。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>免费 DNS 解析</strong>：全球顶级权威 DNS 解析服务，修改记录实时生效，毫秒级解析响应。</li>
+<li><strong>免费 CDN 加速</strong>：自动缓存静态资源，提升网站访问速度并节省服务器流量。</li>
+<li><strong>免费 SSL/TLS 证书</strong>：自动为域名签发和续期 SSL 证书，一键开启全站 HTTPS。</li>
+<li><strong>Cloudflare Pages</strong>：静态网站（Hexo、Hugo、Vue/React 前端）可直接免费部署，省去服务器费用。</li>
+<li><strong>NS 服务器修改</strong>：需在域名注册商控制台将默认 DNS 服务器替换为 Cloudflare 提供的两条 Nameservers 地址。</li>
+<li><strong>Proxied vs DNS only</strong>：橙色云朵开启 Cloudflare 代理（CDN + 防御），灰色云朵仅做 DNS 解析不经过 Cloudflare 服务器。</li>
+<li><strong>国内备案注意</strong>：大陆境内服务器 + 国内 CDN 场景下，改用 Cloudflare DNS 可能导致访问走海外节点或影响备案接入。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>是的，使用 Cloudflare 来&quot;托管（解析）现有的域名&quot;是完全免费的。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/cloudflare-domain-managed/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/cloudflare-github-pages/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="免费静态网站托管-cloudflare-pages直接连接-github自动构建部署你的前端">免费静态网站托管 (Cloudflare Pages)：直接连接 GitHub，自动构建部署你的前端</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph GitHub
+        CODE[前端代码仓库 公开/私有]
+        BRANCH[main 分支]
+        PR[Pull Request / 新分支]
+    end
+    subgraph Cloudflare Pages
+        CONNECT[Connect to Git 绑定 GitHub]
+        AUTH[GitHub 授权 Only select / All repos]
+        BUILD[自动构建 npm run build / pnpm build]
+        OUTPUT[输出目录 dist / build / public]
+        ENV[环境变量配置]
+        PROD[生产部署 主站]
+        PREVIEW[预览部署 临时网址]
+    end
+    subgraph 访问
+        DOMAIN[https://项目名.pages.dev]
+        USER[用户访问]
+    end
+    CODE --&gt; BRANCH
+    BRANCH --&gt;|git push| CONNECT
+    CONNECT --&gt; AUTH
+    AUTH --&gt; BUILD
+    BUILD --&gt; OUTPUT
+    ENV --&gt; BUILD
+    BRANCH --&gt; PROD
+    PR --&gt; PREVIEW
+    PROD --&gt; DOMAIN
+    DOMAIN --&gt; USER</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Cloudflare Pages 支持直接连接 GitHub 仓库，实现前端项目的自动构建与部署，完全免费。</li>
+<li>操作流程四步：创建 Pages 项目 → 授权绑定 GitHub → 配置构建设置 → 等待首次构建完成。</li>
+<li>Cloudflare 自动识别主流框架（Vue、React、Next.js、Vite、Hugo、Hexo 等），自动填入构建命令和输出目录。</li>
+<li>每次 push 到 main 分支自动触发构建，几十秒内更新线上网站；新建分支或 PR 会生成临时预览网址。</li>
+<li>部署完成后获得免费的 <code>https://&lt;项目名&gt;.pages.dev</code> 域名。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>GitHub 授权选择</strong>：推荐选择 &ldquo;Only select repositories&rdquo; 仅授权特定仓库，安全性更高；也可选择 &ldquo;All repositories&rdquo; 授权所有仓库。</li>
+<li><strong>框架自动识别</strong>：Cloudflare Pages 会自动识别 Vue、React、Next.js、Vite、Hugo、Hexo 等主流框架，自动填入对应的构建命令和输出目录。</li>
+<li><strong>生产分支配置</strong>：通常设为 main 或 master，每次该分支有新的 git push 时自动触发构建。</li>
+<li><strong>构建命令与输出目录</strong>：若未自动识别，需手动填写构建命令（如 <code>npm run build</code> 或 <code>pnpm build</code>）和输出目录（如 <code>dist</code>、<code>build</code> 或 <code>public</code>）。</li>
+<li><strong>环境变量</strong>：如有 .env 中的变量（如 API 接口地址），可在构建设置中展开添加。</li>
+<li><strong>自动 CI/CD 体验</strong>：push 到 main 分支自动部署主站；新建分支或提交 PR 自动生成独有的临时预览网址，不影响线上主站。</li>
+<li><strong>免费域名</strong>：构建成功后自动生成 <code>https://&lt;项目名&gt;.pages.dev</code> 格式的免费访问域名。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>在 Cloudflare Pages 上直接连接 GitHub 实现前端项目自动构建与部署，过程非常简单且完全免费。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/cloudflare-github-pages/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/fruit-platform-tech/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="水果电商订购平台设计方案markdown">水果电商订购平台设计方案（Markdown）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 方案一: Spring Boot + Vue3 推荐
+        NET1[Internet]
+        NGINX1[Nginx 负载均衡]
+        VUE1A[Vue3 前端实例 A]
+        VUE1B[Vue3 前端实例 B]
+        SB1[SpringBoot 集群]
+        SB1A[SpringBoot-01]
+        SB1B[SpringBoot-02]
+        REDIS1[(Redis)]
+        MYSQL1[(MySQL)]
+        RABBIT1{{RabbitMQ}}
+        SMTP1[邮箱服务 SMTP]
+        NET1 --&gt; NGINX1
+        NGINX1 --&gt; VUE1A
+        NGINX1 --&gt; VUE1B
+        VUE1A --&gt; SB1
+        VUE1B --&gt; SB1
+        SB1 --&gt; SB1A
+        SB1 --&gt; SB1B
+        SB1A --&gt; REDIS1
+        SB1A --&gt; MYSQL1
+        SB1A --&gt; RABBIT1
+        SB1B --&gt; REDIS1
+        SB1B --&gt; MYSQL1
+        SB1B --&gt; RABBIT1
+        RABBIT1 --&gt; SMTP1
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。</li>
+<li>推荐方案一：Spring Boot 3 + Vue3 + MySQL + Redis + RabbitMQ + Docker 部署，适合企业生产环境。</li>
+<li>方案二：React + Node.js（NestJS）+ Kubernetes，适合快速迭代和统一 JavaScript 技术栈。</li>
+<li>邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。</li>
+<li>安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。</li>
+<li>容量规划：100 活跃用户、5000+ 商品、3000+ 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>方案一前端技术栈</strong>：Vue3 + TypeScript + Pinia + Axios + Element Plus + Vite，企业级管理界面首选组合。</li>
+<li><strong>方案一后端技术栈</strong>：Spring Boot 3 + Spring Security + JWT + MyBatis Plus + Redis + MySQL，成熟的 Java 企业级方案。</li>
+<li><strong>方案二前端技术栈</strong>：React18 + TypeScript + Redux Toolkit + Ant Design + Vite + Axios，适合快速迭代互联网项目。</li>
+<li><strong>方案二后端技术栈</strong>：Node.js + NestJS + Prisma + JWT + Redis + MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。</li>
+<li><strong>数据库设计</strong>：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。</li>
+<li><strong>邮件验证码设计</strong>：验证码存储在 Redis 中（<code>email:demo@qq.com → code:123456, ttl:300秒</code>），通过 SMTP 发送，验证时从 Redis 校验。</li>
+<li><strong>API 接口设计</strong>：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。</li>
+<li><strong>部署方案</strong>：2 台应用服务器（4C8G）+ 1 台数据库服务器（8C16G）+ 1 台 Redis（2C4G）+ 1 台 Nginx（2C4G），Docker 容器化部署。</li>
+<li><strong>安全防刷</strong>：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。</li>
+<li><strong>订单状态流转</strong>：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<h2 id="1-项目概述">1. 项目概述</h2>
+<p>建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/fruit-platform-tech/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/personalweb/fruit-station-design/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="水果电商订购平台设计方案markdown">水果电商订购平台设计方案（Markdown）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 方案一: Spring Boot + Vue3 推荐
+        NET1[Internet]
+        NGINX1[Nginx 负载均衡]
+        VUE1A[Vue3 前端实例 A]
+        VUE1B[Vue3 前端实例 B]
+        SB1[SpringBoot 集群]
+        SB1A[SpringBoot-01]
+        SB1B[SpringBoot-02]
+        REDIS1[(Redis)]
+        MYSQL1[(MySQL)]
+        RABBIT1{{RabbitMQ}}
+        SMTP1[邮箱服务 SMTP]
+        NET1 --&gt; NGINX1
+        NGINX1 --&gt; VUE1A
+        NGINX1 --&gt; VUE1B
+        VUE1A --&gt; SB1
+        VUE1B --&gt; SB1
+        SB1 --&gt; SB1A
+        SB1 --&gt; SB1B
+        SB1A --&gt; REDIS1
+        SB1A --&gt; MYSQL1
+        SB1A --&gt; RABBIT1
+        SB1B --&gt; REDIS1
+        SB1B --&gt; MYSQL1
+        SB1B --&gt; RABBIT1
+        RABBIT1 --&gt; SMTP1
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。</li>
+<li>推荐方案一：Spring Boot 3 + Vue3 + MySQL + Redis + RabbitMQ + Docker 部署，适合企业生产环境。</li>
+<li>方案二：React + Node.js（NestJS）+ Kubernetes，适合快速迭代和统一 JavaScript 技术栈。</li>
+<li>邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。</li>
+<li>安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。</li>
+<li>容量规划：100 活跃用户、5000+ 商品、3000+ 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>方案一前端技术栈</strong>：Vue3 + TypeScript + Pinia + Axios + Element Plus + Vite，企业级管理界面首选组合。</li>
+<li><strong>方案一后端技术栈</strong>：Spring Boot 3 + Spring Security + JWT + MyBatis Plus + Redis + MySQL，成熟的 Java 企业级方案。</li>
+<li><strong>方案二前端技术栈</strong>：React18 + TypeScript + Redux Toolkit + Ant Design + Vite + Axios，适合快速迭代互联网项目。</li>
+<li><strong>方案二后端技术栈</strong>：Node.js + NestJS + Prisma + JWT + Redis + MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。</li>
+<li><strong>数据库设计</strong>：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。</li>
+<li><strong>邮件验证码设计</strong>：验证码存储在 Redis 中（<code>email:demo@qq.com → code:123456, ttl:300秒</code>），通过 SMTP 发送，验证时从 Redis 校验。</li>
+<li><strong>API 接口设计</strong>：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。</li>
+<li><strong>部署方案</strong>：2 台应用服务器（4C8G）+ 1 台数据库服务器（8C16G）+ 1 台 Redis（2C4G）+ 1 台 Nginx（2C4G），Docker 容器化部署。</li>
+<li><strong>安全防刷</strong>：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。</li>
+<li><strong>订单状态流转</strong>：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<h2 id="1-项目概述">1. 项目概述</h2>
+<p>建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。</p>
+    </div>
+    <a href="/myweb/technology/personalweb/fruit-station-design/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
     </section>
-    </article>
+    
+		<ul class="pagination pagination-default">
+			<li class="page-item disabled">
+				<a aria-disabled="true" aria-label="First" class="page-link" role="button" tabindex="-1"><span aria-hidden="true">&laquo;&laquo;</span></a>
+			</li>
+		<li class="page-item disabled">
+			<a aria-disabled="true" aria-label="Previous" class="page-link" role="button" tabindex="-1"><span aria-hidden="true">&laquo;</span></a>
+		</li>
+			<li class="page-item active">
+				<a aria-current="page" aria-label="Page 1" class="page-link" role="button">1</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/2/" aria-label="Page 2" class="page-link" role="button">2</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/3/" aria-label="Page 3" class="page-link" role="button">3</a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/technology/page/2/" aria-label="Next" class="page-link" role="button"><span aria-hidden="true">&raquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/3/" aria-label="Last" class="page-link" role="button"><span aria-hidden="true">&raquo;&raquo;</span></a>
+			</li>
+		</ul></article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

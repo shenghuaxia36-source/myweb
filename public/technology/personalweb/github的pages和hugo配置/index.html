@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="GitHub Pages 和 Hugo 配置
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph 本地开发
+        HUGO[Hugo 项目]
+        TOML[hugo.toml 配置]
+        THEME[PaperMod 主题 - git submodule]
+        CONTENT[content/ Markdown 文章]
+    end
+    subgraph GitHub
+        REPO[GitHub Repository]
+        ACTION[GitHub Actions - hugo.yml]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph Cloudflare DNS
+        CNAME[CNAME: www -&gt; 用户名.github.io]
+        DOMAIN[自定义域名 www.shenghua.au]
+    end
+    CONTENT --&gt; HUGO
+    TOML --&gt; HUGO
+    THEME --&gt; HUGO
+    HUGO --&gt;|git push 源码| REPO
+    REPO --&gt;|push to main 触发| ACTION
+    ACTION --&gt;|hugo 编译生成 public/| PAGES
+    PAGES --&gt;|static/CNAME 绑定域名| DOMAIN
+    DOMAIN --&gt; CNAME
+  摘要
+
+在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。
+完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。
+GitHub Actions 工作流使用 peaceiris/actions-hugo@v3 安装 Hugo，编译后通过 actions/deploy-pages@v4 部署到 Pages。
+自定义域名需在 static/CNAME 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 用户名.github.io。
+Hugo 常见配置包括 baseURL、菜单、中文配置（hasCJKLanguage = true）和 PaperMod 搜索功能。
+
+技术要点
+
+Hugo 主题以 git submodule 引入：使用 git submodule add 添加 PaperMod 主题，GitHub Actions 中需设置 submodules: recursive 确保主题被正确拉取。
+GitHub Actions 工作流：触发条件为 push 到 main 分支，需要 pages: write 和 id-token: write 权限，使用 concurrency 控制部署队列。
+Pages Source 设置：必须选择 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则会因仓库中没有 public 目录而导致 404。
+CNAME 文件：放在 static/CNAME 中，Hugo 编译后会自动输出到 public/CNAME，GitHub Pages 据此绑定自定义域名。
+Cloudflare DNS 配置：子域名用 CNAME 记录指向 用户名.github.io；根域名需配置 GitHub Pages 官方的 4 个 A 记录。
+中文配置：设置 languageCode = &quot;zh-cn&quot;、defaultContentLanguage = &quot;zh-cn&quot;、hasCJKLanguage = true 确保中文正常处理。
+PaperMod 搜索：配置 [outputs] home = [&quot;HTML&quot;,&quot;RSS&quot;,&quot;JSON&quot;] 启用搜索功能。
+推荐目录结构：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。
+
+原文内容
+如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/github%E7%9A%84pages%E5%92%8Chugo%E9%85%8D%E7%BD%AE/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/github%E7%9A%84pages%E5%92%8Chugo%E9%85%8D%E7%BD%AE/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="GitHub Pages 和 Hugo 配置 架构图 Copygraph TD subgraph 本地开发 HUGO[Hugo 项目] TOML[hugo.toml 配置] THEME[PaperMod 主题 - git submodule] CONTENT[content/ Markdown 文章] end subgraph GitHub REPO[GitHub Repository] ACTION[GitHub Actions - hugo.yml] PAGES[GitHub Pages 托管] end subgraph Cloudflare DNS CNAME[CNAME: www -&gt; 用户名.github.io] DOMAIN[自定义域名 www.shenghua.au] end CONTENT --&gt; HUGO TOML --&gt; HUGO THEME --&gt; HUGO HUGO --&gt;|git push 源码| REPO REPO --&gt;|push to main 触发| ACTION ACTION --&gt;|hugo 编译生成 public/| PAGES PAGES --&gt;|static/CNAME 绑定域名| DOMAIN DOMAIN --&gt; CNAME摘要 在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。 完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。 GitHub Actions 工作流使用 peaceiris/actions-hugo@v3 安装 Hugo，编译后通过 actions/deploy-pages@v4 部署到 Pages。 自定义域名需在 static/CNAME 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 用户名.github.io。 Hugo 常见配置包括 baseURL、菜单、中文配置（hasCJKLanguage = true）和 PaperMod 搜索功能。 技术要点 Hugo 主题以 git submodule 引入：使用 git submodule add 添加 PaperMod 主题，GitHub Actions 中需设置 submodules: recursive 确保主题被正确拉取。 GitHub Actions 工作流：触发条件为 push 到 main 分支，需要 pages: write 和 id-token: write 权限，使用 concurrency 控制部署队列。 Pages Source 设置：必须选择 “GitHub Actions” 而非 “Deploy from a branch”，否则会因仓库中没有 public 目录而导致 404。 CNAME 文件：放在 static/CNAME 中，Hugo 编译后会自动输出到 public/CNAME，GitHub Pages 据此绑定自定义域名。 Cloudflare DNS 配置：子域名用 CNAME 记录指向 用户名.github.io；根域名需配置 GitHub Pages 官方的 4 个 A 记录。 中文配置：设置 languageCode = &#34;zh-cn&#34;、defaultContentLanguage = &#34;zh-cn&#34;、hasCJKLanguage = true 确保中文正常处理。 PaperMod 搜索：配置 [outputs] home = [&#34;HTML&#34;,&#34;RSS&#34;,&#34;JSON&#34;] 启用搜索功能。 推荐目录结构：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。 原文内容 如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="GitHub Pages 和 Hugo 配置 架构图 Copygraph TD subgraph 本地开发 HUGO[Hugo 项目] TOML[hugo.toml 配置] THEME[PaperMod 主题 - git submodule] CONTENT[content/ Markdown 文章] end subgraph GitHub REPO[GitHub Repository] ACTION[GitHub Actions - hugo.yml] PAGES[GitHub Pages 托管] end subgraph Cloudflare DNS CNAME[CNAME: www -&gt; 用户名.github.io] DOMAIN[自定义域名 www.shenghua.au] end CONTENT --&gt; HUGO TOML --&gt; HUGO THEME --&gt; HUGO HUGO --&gt;|git push 源码| REPO REPO --&gt;|push to main 触发| ACTION ACTION --&gt;|hugo 编译生成 public/| PAGES PAGES --&gt;|static/CNAME 绑定域名| DOMAIN DOMAIN --&gt; CNAME摘要 在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。 完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。 GitHub Actions 工作流使用 peaceiris/actions-hugo@v3 安装 Hugo，编译后通过 actions/deploy-pages@v4 部署到 Pages。 自定义域名需在 static/CNAME 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 用户名.github.io。 Hugo 常见配置包括 baseURL、菜单、中文配置（hasCJKLanguage = true）和 PaperMod 搜索功能。 技术要点 Hugo 主题以 git submodule 引入：使用 git submodule add 添加 PaperMod 主题，GitHub Actions 中需设置 submodules: recursive 确保主题被正确拉取。 GitHub Actions 工作流：触发条件为 push 到 main 分支，需要 pages: write 和 id-token: write 权限，使用 concurrency 控制部署队列。 Pages Source 设置：必须选择 “GitHub Actions” 而非 “Deploy from a branch”，否则会因仓库中没有 public 目录而导致 404。 CNAME 文件：放在 static/CNAME 中，Hugo 编译后会自动输出到 public/CNAME，GitHub Pages 据此绑定自定义域名。 Cloudflare DNS 配置：子域名用 CNAME 记录指向 用户名.github.io；根域名需配置 GitHub Pages 官方的 4 个 A 记录。 中文配置：设置 languageCode = &#34;zh-cn&#34;、defaultContentLanguage = &#34;zh-cn&#34;、hasCJKLanguage = true 确保中文正常处理。 PaperMod 搜索：配置 [outputs] home = [&#34;HTML&#34;,&#34;RSS&#34;,&#34;JSON&#34;] 启用搜索功能。 推荐目录结构：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。 原文内容 如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：">
+	<meta itemprop="wordCount" content="612">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="GitHub Pages 和 Hugo 配置 架构图 Copygraph TD subgraph 本地开发 HUGO[Hugo 项目] TOML[hugo.toml 配置] THEME[PaperMod 主题 - git submodule] CONTENT[content/ Markdown 文章] end subgraph GitHub REPO[GitHub Repository] ACTION[GitHub Actions - hugo.yml] PAGES[GitHub Pages 托管] end subgraph Cloudflare DNS CNAME[CNAME: www -&gt; 用户名.github.io] DOMAIN[自定义域名 www.shenghua.au] end CONTENT --&gt; HUGO TOML --&gt; HUGO THEME --&gt; HUGO HUGO --&gt;|git push 源码| REPO REPO --&gt;|push to main 触发| ACTION ACTION --&gt;|hugo 编译生成 public/| PAGES PAGES --&gt;|static/CNAME 绑定域名| DOMAIN DOMAIN --&gt; CNAME摘要 在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。 完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。 GitHub Actions 工作流使用 peaceiris/actions-hugo@v3 安装 Hugo，编译后通过 actions/deploy-pages@v4 部署到 Pages。 自定义域名需在 static/CNAME 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 用户名.github.io。 Hugo 常见配置包括 baseURL、菜单、中文配置（hasCJKLanguage = true）和 PaperMod 搜索功能。 技术要点 Hugo 主题以 git submodule 引入：使用 git submodule add 添加 PaperMod 主题，GitHub Actions 中需设置 submodules: recursive 确保主题被正确拉取。 GitHub Actions 工作流：触发条件为 push 到 main 分支，需要 pages: write 和 id-token: write 权限，使用 concurrency 控制部署队列。 Pages Source 设置：必须选择 “GitHub Actions” 而非 “Deploy from a branch”，否则会因仓库中没有 public 目录而导致 404。 CNAME 文件：放在 static/CNAME 中，Hugo 编译后会自动输出到 public/CNAME，GitHub Pages 据此绑定自定义域名。 Cloudflare DNS 配置：子域名用 CNAME 记录指向 用户名.github.io；根域名需配置 GitHub Pages 官方的 4 个 A 记录。 中文配置：设置 languageCode = &#34;zh-cn&#34;、defaultContentLanguage = &#34;zh-cn&#34;、hasCJKLanguage = true 确保中文正常处理。 PaperMod 搜索：配置 [outputs] home = [&#34;HTML&#34;,&#34;RSS&#34;,&#34;JSON&#34;] 启用搜索功能。 推荐目录结构：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。 原文内容 如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-github的pages和hugo配置">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-github的pages和hugo配置 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="github-pages-和-hugo-配置">GitHub Pages 和 Hugo 配置</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 本地开发
+        HUGO[Hugo 项目]
+        TOML[hugo.toml 配置]
+        THEME[PaperMod 主题 - git submodule]
+        CONTENT[content/ Markdown 文章]
+    end
+    subgraph GitHub
+        REPO[GitHub Repository]
+        ACTION[GitHub Actions - hugo.yml]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph Cloudflare DNS
+        CNAME[CNAME: www -&gt; 用户名.github.io]
+        DOMAIN[自定义域名 www.shenghua.au]
+    end
+    CONTENT --&gt; HUGO
+    TOML --&gt; HUGO
+    THEME --&gt; HUGO
+    HUGO --&gt;|git push 源码| REPO
+    REPO --&gt;|push to main 触发| ACTION
+    ACTION --&gt;|hugo 编译生成 public/| PAGES
+    PAGES --&gt;|static/CNAME 绑定域名| DOMAIN
+    DOMAIN --&gt; CNAME</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。</li>
+<li>完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。</li>
+<li>GitHub Actions 工作流使用 <code>peaceiris/actions-hugo@v3</code> 安装 Hugo，编译后通过 <code>actions/deploy-pages@v4</code> 部署到 Pages。</li>
+<li>自定义域名需在 <code>static/CNAME</code> 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 <code>用户名.github.io</code>。</li>
+<li>Hugo 常见配置包括 baseURL、菜单、中文配置（<code>hasCJKLanguage = true</code>）和 PaperMod 搜索功能。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Hugo 主题以 git submodule 引入</strong>：使用 <code>git submodule add</code> 添加 PaperMod 主题，GitHub Actions 中需设置 <code>submodules: recursive</code> 确保主题被正确拉取。</li>
+<li><strong>GitHub Actions 工作流</strong>：触发条件为 push 到 main 分支，需要 <code>pages: write</code> 和 <code>id-token: write</code> 权限，使用 <code>concurrency</code> 控制部署队列。</li>
+<li><strong>Pages Source 设置</strong>：必须选择 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则会因仓库中没有 public 目录而导致 404。</li>
+<li><strong>CNAME 文件</strong>：放在 <code>static/CNAME</code> 中，Hugo 编译后会自动输出到 <code>public/CNAME</code>，GitHub Pages 据此绑定自定义域名。</li>
+<li><strong>Cloudflare DNS 配置</strong>：子域名用 CNAME 记录指向 <code>用户名.github.io</code>；根域名需配置 GitHub Pages 官方的 4 个 A 记录。</li>
+<li><strong>中文配置</strong>：设置 <code>languageCode = &quot;zh-cn&quot;</code>、<code>defaultContentLanguage = &quot;zh-cn&quot;</code>、<code>hasCJKLanguage = true</code> 确保中文正常处理。</li>
+<li><strong>PaperMod 搜索</strong>：配置 <code>[outputs] home = [&quot;HTML&quot;,&quot;RSS&quot;,&quot;JSON&quot;]</code> 启用搜索功能。</li>
+<li><strong>推荐目录结构</strong>：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：</p>
+<ol>
+<li>GitHub Actions 自动构建 Hugo（推荐）</li>
+<li>本地生成 public 后上传到 GitHub Pages</li>
+</ol>
+<p>目前 Hugo 官方更推荐第一种。</p>
+<h2 id="1-创建-hugo-项目">1. 创建 Hugo 项目</h2>
+<p>本地安装 Hugo：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo version</span></span></code></pre></div>
+  </div><p>创建站点：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo new site myblog
+</span></span><span style="display:flex;"><span>cd myblog</span></span></code></pre></div>
+  </div><p>添加主题，例如 PaperMod：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>git init
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>git submodule add https://github.com/adityatelange/hugo-PaperMod.git themes/PaperMod</span></span></code></pre></div>
+  </div><p>配置 <code>hugo.toml</code>：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span><span style="color:#a6e22e">baseURL</span> = <span style="color:#e6db74">&#39;https://yourdomain.com/&#39;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">languageCode</span> = <span style="color:#e6db74">&#39;zh-cn&#39;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">title</span> = <span style="color:#e6db74">&#39;Shenghua Blog&#39;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">theme</span> = <span style="color:#e6db74">&#39;PaperMod&#39;</span></span></span></code></pre></div>
+  </div><h2 id="2-创建-github-repository">2. 创建 GitHub Repository</h2>
+<p>例如创建：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>shenghuaxia-blog</code></pre>
+  </div><p>上传代码：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>git add .
+</span></span><span style="display:flex;"><span>git commit -m <span style="color:#e6db74">&#34;initial&#34;</span>
+</span></span><span style="display:flex;"><span>git remote add origin https://github.com/用户名/shenghuaxia-blog.git
+</span></span><span style="display:flex;"><span>git push -u origin main</span></span></code></pre></div>
+  </div><h2 id="3-配置-github-actions">3. 配置 GitHub Actions</h2>
+<p>创建目录：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>.github/workflows/</code></pre>
+  </div><p>创建文件：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>.github/workflows/hugo.yml</code></pre>
+  </div><p>内容：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">name</span>: <span style="color:#ae81ff">Deploy Hugo</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">on</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">push</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">branches</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#ae81ff">main</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">permissions</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">contents</span>: <span style="color:#ae81ff">read</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">pages</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">id-token</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">concurrency</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">group</span>: <span style="color:#ae81ff">pages</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">cancel-in-progress</span>: <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">jobs</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">build</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/checkout@v4</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">submodules</span>: <span style="color:#ae81ff">recursive</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">fetch-depth</span>: <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Setup Hugo</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">peaceiris/actions-hugo@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">hugo-version</span>: <span style="color:#e6db74">&#39;latest&#39;</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">extended</span>: <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Build</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">run</span>: <span style="color:#ae81ff">hugo</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Upload</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/upload-pages-artifact@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">path</span>: <span style="color:#ae81ff">./public</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">deploy</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">environment</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">name</span>: <span style="color:#ae81ff">github-pages</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">url</span>: <span style="color:#ae81ff">${{ steps.deployment.outputs.page_url }}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">needs</span>: <span style="color:#ae81ff">build</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">id</span>: <span style="color:#ae81ff">deployment</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/deploy-pages@v4</span></span></span></code></pre></div>
+  </div><h2 id="4-启用-github-pages">4. 启用 GitHub Pages</h2>
+<p>进入：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Repository → Settings → Pages</code></pre>
+  </div><p>选择：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Build and deployment</code></pre>
+  </div><p>Source：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>GitHub Actions</code></pre>
+  </div><p>保存。</p>
+<h2 id="5-测试部署">5. 测试部署</h2>
+<p>新增文章：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo new posts/hello.md</span></span></code></pre></div>
+  </div><p>编辑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-markdown" data-lang="markdown"><span style="display:flex;"><span>---
+</span></span><span style="display:flex;"><span><span style="color:#f92672">title</span>: <span style="color:#e6db74">&#34;Hello Hugo&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">date</span>: <span style="color:#e6db74">2026-08-17</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">draft</span>: <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span>---
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>My first post.</span></span></code></pre></div>
+  </div><p>提交：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>git add .
+</span></span><span style="display:flex;"><span>git commit -m <span style="color:#e6db74">&#34;new post&#34;</span>
+</span></span><span style="display:flex;"><span>git push</span></span></code></pre></div>
+  </div><p>GitHub Actions 会自动构建。</p>
+<p>访问：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>https://用户名.github.io/仓库名/</code></pre>
+  </div><h2 id="6-使用自定义域名cloudflare">6. 使用自定义域名（Cloudflare）</h2>
+<p>如果域名：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>shenghua.au</code></pre>
+  </div><p>在仓库根目录创建：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>static/CNAME</code></pre>
+  </div><p>内容：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>www.shenghua.au</code></pre>
+  </div><p>构建后会自动出现在：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>public/CNAME</code></pre>
+  </div><p>GitHub Pages 设置：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Settings → Pages → Custom Domain</code></pre>
+  </div><p>填写：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>www.shenghua.au</code></pre>
+  </div><p>Cloudflare DNS：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Type: CNAME
+Name: www
+Target: 用户名.github.io</code></pre>
+  </div><p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>www -&gt; shenghuaxia.github.io</code></pre>
+  </div><p>如果是根域：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>shenghua.au</code></pre>
+  </div><p>则配置 GitHub Pages 官方的 4 个 A 记录。</p>
+<h2 id="7-hugo-常见配置">7. Hugo 常见配置</h2>
+<h3 id="url">URL</h3>
+<p>生产环境必须改成自己的域名。</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span><span style="color:#a6e22e">baseURL</span> = <span style="color:#e6db74">&#39;https://www.shenghua.au/&#39;</span></span></span></code></pre></div>
+  </div><h3 id="菜单">菜单</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span>[<span style="color:#a6e22e">menu</span>]
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[[<span style="color:#a6e22e">menu</span>.<span style="color:#a6e22e">main</span>]]
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">name</span> = <span style="color:#e6db74">&#34;Home&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">url</span> = <span style="color:#e6db74">&#34;/&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">weight</span> = <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[[<span style="color:#a6e22e">menu</span>.<span style="color:#a6e22e">main</span>]]
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">name</span> = <span style="color:#e6db74">&#34;Posts&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">url</span> = <span style="color:#e6db74">&#34;/posts/&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">weight</span> = <span style="color:#ae81ff">2</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>[[<span style="color:#a6e22e">menu</span>.<span style="color:#a6e22e">main</span>]]
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">name</span> = <span style="color:#e6db74">&#34;About&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">url</span> = <span style="color:#e6db74">&#34;/about/&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">weight</span> = <span style="color:#ae81ff">3</span></span></span></code></pre></div>
+  </div><h3 id="中文配置">中文配置</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span><span style="color:#a6e22e">languageCode</span> = <span style="color:#e6db74">&#34;zh-cn&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">defaultContentLanguage</span> = <span style="color:#e6db74">&#34;zh-cn&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">hasCJKLanguage</span> = <span style="color:#66d9ef">true</span></span></span></code></pre></div>
+  </div><h3 id="启用搜索papermod">启用搜索（PaperMod）</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span>[<span style="color:#a6e22e">outputs</span>]
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">home</span> = [<span style="color:#e6db74">&#34;HTML&#34;</span>,<span style="color:#e6db74">&#34;RSS&#34;</span>,<span style="color:#e6db74">&#34;JSON&#34;</span>]</span></span></code></pre></div>
+  </div><h2 id="推荐目录结构">推荐目录结构</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>myblog/
+├── content/
+│   ├── posts/
+│   └── about.md
+├── static/
+│   ├── images/
+│   └── CNAME
+├── themes/
+│   └── PaperMod
+├── hugo.toml
+└── .github/
+    └── workflows/
+        └── hugo.yml</code></pre>
+  </div><blockquote>
+<p>如果你已经准备好 GitHub Repository 名称和 Cloudflare 域名，我可以直接给你生成一份适用于 GitHub Pages + Cloudflare + Hugo(PaperMod) 的完整 <code>hugo.toml</code> 和 DNS 配置。</p>
+</blockquote>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

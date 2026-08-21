@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="免费个人网站发布方案
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph 本地开发环境
+        WRITE[编写 Markdown 文章]
+        HUGO[Hugo 编译引擎]
+        LOCAL[hugo server -D 本地预览]
+    end
+    subgraph GitHub 仓库
+        SOURCE[源码: content/ hugo.toml themes/]
+        GITIGNORE[.gitignore: /public /resources]
+        ACTION[GitHub Actions 工作流]
+    end
+    subgraph 云端构建与发布
+        CICD[GitHub Actions 虚拟机]
+        BUILD[hugo --minify 编译]
+        PUBLIC[public/ 静态HTML]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph 可选增强
+        CF[Cloudflare CDN 加速]
+        DOMAIN[自定义域名]
+        SSL[免费 SSL 证书]
+    end
+    WRITE --&gt; HUGO
+    HUGO --&gt; LOCAL
+    WRITE --&gt;|git push| SOURCE
+    SOURCE --&gt; ACTION
+    ACTION --&gt; CICD
+    CICD --&gt; BUILD
+    BUILD --&gt; PUBLIC
+    PUBLIC --&gt; PAGES
+    PAGES --&gt; CF
+    CF --&gt; DOMAIN
+    DOMAIN --&gt; SSL
+  摘要
+
+Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。
+推荐架构：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，除域名外全部免费。
+Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。
+推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。
+Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。
+
+技术要点
+
+Hugo 编译原理：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。
+static/ vs assets/：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。
+Page Bundles：目录型文章结构（content/posts/my-post/index.md &#43; cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。
+.gitignore 配置：必须包含 /public、/resources、.hugo_build.lock，防止本地编译产物上传到 GitHub。
+GitHub Actions Source 设置：Settings → Pages → Source 必须选 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则因仓库无 public 目录会 404。
+两种部署方案对比：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。
+URL 映射规则：content/about.md → public/about/index.html → /about/；content/posts/first-post.md → /posts/first-post/。
+成本分析：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。
+PaperMod 主题：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。
+IT 基础设施工程师推荐组合：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，适合长期维护个人技术品牌。
+
+原文内容
+Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/%E5%85%8D%E8%B4%B9%E4%B8%AA%E4%BA%BA%E7%BD%91%E7%AB%99%E5%8F%91%E5%B8%83%E6%96%B9%E6%A1%88/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/%E5%85%8D%E8%B4%B9%E4%B8%AA%E4%BA%BA%E7%BD%91%E7%AB%99%E5%8F%91%E5%B8%83%E6%96%B9%E6%A1%88/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="免费个人网站发布方案 架构图 Copygraph TD subgraph 本地开发环境 WRITE[编写 Markdown 文章] HUGO[Hugo 编译引擎] LOCAL[hugo server -D 本地预览] end subgraph GitHub 仓库 SOURCE[源码: content/ hugo.toml themes/] GITIGNORE[.gitignore: /public /resources] ACTION[GitHub Actions 工作流] end subgraph 云端构建与发布 CICD[GitHub Actions 虚拟机] BUILD[hugo --minify 编译] PUBLIC[public/ 静态HTML] PAGES[GitHub Pages 托管] end subgraph 可选增强 CF[Cloudflare CDN 加速] DOMAIN[自定义域名] SSL[免费 SSL 证书] end WRITE --&gt; HUGO HUGO --&gt; LOCAL WRITE --&gt;|git push| SOURCE SOURCE --&gt; ACTION ACTION --&gt; CICD CICD --&gt; BUILD BUILD --&gt; PUBLIC PUBLIC --&gt; PAGES PAGES --&gt; CF CF --&gt; DOMAIN DOMAIN --&gt; SSL摘要 Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。 推荐架构：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，除域名外全部免费。 Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。 推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。 Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。 技术要点 Hugo 编译原理：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。 static/ vs assets/：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。 Page Bundles：目录型文章结构（content/posts/my-post/index.md &#43; cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。 .gitignore 配置：必须包含 /public、/resources、.hugo_build.lock，防止本地编译产物上传到 GitHub。 GitHub Actions Source 设置：Settings → Pages → Source 必须选 “GitHub Actions” 而非 “Deploy from a branch”，否则因仓库无 public 目录会 404。 两种部署方案对比：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。 URL 映射规则：content/about.md → public/about/index.html → /about/；content/posts/first-post.md → /posts/first-post/。 成本分析：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。 PaperMod 主题：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。 IT 基础设施工程师推荐组合：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，适合长期维护个人技术品牌。 原文内容 Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="免费个人网站发布方案 架构图 Copygraph TD subgraph 本地开发环境 WRITE[编写 Markdown 文章] HUGO[Hugo 编译引擎] LOCAL[hugo server -D 本地预览] end subgraph GitHub 仓库 SOURCE[源码: content/ hugo.toml themes/] GITIGNORE[.gitignore: /public /resources] ACTION[GitHub Actions 工作流] end subgraph 云端构建与发布 CICD[GitHub Actions 虚拟机] BUILD[hugo --minify 编译] PUBLIC[public/ 静态HTML] PAGES[GitHub Pages 托管] end subgraph 可选增强 CF[Cloudflare CDN 加速] DOMAIN[自定义域名] SSL[免费 SSL 证书] end WRITE --&gt; HUGO HUGO --&gt; LOCAL WRITE --&gt;|git push| SOURCE SOURCE --&gt; ACTION ACTION --&gt; CICD CICD --&gt; BUILD BUILD --&gt; PUBLIC PUBLIC --&gt; PAGES PAGES --&gt; CF CF --&gt; DOMAIN DOMAIN --&gt; SSL摘要 Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。 推荐架构：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，除域名外全部免费。 Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。 推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。 Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。 技术要点 Hugo 编译原理：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。 static/ vs assets/：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。 Page Bundles：目录型文章结构（content/posts/my-post/index.md &#43; cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。 .gitignore 配置：必须包含 /public、/resources、.hugo_build.lock，防止本地编译产物上传到 GitHub。 GitHub Actions Source 设置：Settings → Pages → Source 必须选 “GitHub Actions” 而非 “Deploy from a branch”，否则因仓库无 public 目录会 404。 两种部署方案对比：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。 URL 映射规则：content/about.md → public/about/index.html → /about/；content/posts/first-post.md → /posts/first-post/。 成本分析：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。 PaperMod 主题：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。 IT 基础设施工程师推荐组合：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，适合长期维护个人技术品牌。 原文内容 Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。">
+	<meta itemprop="wordCount" content="1470">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="免费个人网站发布方案 架构图 Copygraph TD subgraph 本地开发环境 WRITE[编写 Markdown 文章] HUGO[Hugo 编译引擎] LOCAL[hugo server -D 本地预览] end subgraph GitHub 仓库 SOURCE[源码: content/ hugo.toml themes/] GITIGNORE[.gitignore: /public /resources] ACTION[GitHub Actions 工作流] end subgraph 云端构建与发布 CICD[GitHub Actions 虚拟机] BUILD[hugo --minify 编译] PUBLIC[public/ 静态HTML] PAGES[GitHub Pages 托管] end subgraph 可选增强 CF[Cloudflare CDN 加速] DOMAIN[自定义域名] SSL[免费 SSL 证书] end WRITE --&gt; HUGO HUGO --&gt; LOCAL WRITE --&gt;|git push| SOURCE SOURCE --&gt; ACTION ACTION --&gt; CICD CICD --&gt; BUILD BUILD --&gt; PUBLIC PUBLIC --&gt; PAGES PAGES --&gt; CF CF --&gt; DOMAIN DOMAIN --&gt; SSL摘要 Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。 推荐架构：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，除域名外全部免费。 Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。 推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。 Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。 技术要点 Hugo 编译原理：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。 static/ vs assets/：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。 Page Bundles：目录型文章结构（content/posts/my-post/index.md &#43; cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。 .gitignore 配置：必须包含 /public、/resources、.hugo_build.lock，防止本地编译产物上传到 GitHub。 GitHub Actions Source 设置：Settings → Pages → Source 必须选 “GitHub Actions” 而非 “Deploy from a branch”，否则因仓库无 public 目录会 404。 两种部署方案对比：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。 URL 映射规则：content/about.md → public/about/index.html → /about/；content/posts/first-post.md → /posts/first-post/。 成本分析：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。 PaperMod 主题：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。 IT 基础设施工程师推荐组合：Hugo &#43; PaperMod &#43; GitHub Pages &#43; Cloudflare CDN &#43; 自定义域名，适合长期维护个人技术品牌。 原文内容 Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-免费个人网站发布方案">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-免费个人网站发布方案 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="免费个人网站发布方案">免费个人网站发布方案</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 本地开发环境
+        WRITE[编写 Markdown 文章]
+        HUGO[Hugo 编译引擎]
+        LOCAL[hugo server -D 本地预览]
+    end
+    subgraph GitHub 仓库
+        SOURCE[源码: content/ hugo.toml themes/]
+        GITIGNORE[.gitignore: /public /resources]
+        ACTION[GitHub Actions 工作流]
+    end
+    subgraph 云端构建与发布
+        CICD[GitHub Actions 虚拟机]
+        BUILD[hugo --minify 编译]
+        PUBLIC[public/ 静态HTML]
+        PAGES[GitHub Pages 托管]
+    end
+    subgraph 可选增强
+        CF[Cloudflare CDN 加速]
+        DOMAIN[自定义域名]
+        SSL[免费 SSL 证书]
+    end
+    WRITE --&gt; HUGO
+    HUGO --&gt; LOCAL
+    WRITE --&gt;|git push| SOURCE
+    SOURCE --&gt; ACTION
+    ACTION --&gt; CICD
+    CICD --&gt; BUILD
+    BUILD --&gt; PUBLIC
+    PUBLIC --&gt; PAGES
+    PAGES --&gt; CF
+    CF --&gt; DOMAIN
+    DOMAIN --&gt; SSL</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Hugo 是最受欢迎的静态网站生成器之一，基于 Go 语言开发，生成速度极快，支持 Markdown、SEO 友好、主题丰富。</li>
+<li>推荐架构：Hugo + PaperMod + GitHub Pages + Cloudflare CDN + 自定义域名，除域名外全部免费。</li>
+<li>Git 只负责源码版本控制，Hugo 负责 Markdown → HTML 的编译渲染，两者分工明确。</li>
+<li>推荐使用 GitHub Actions 自动构建方案：只 push 源码，云端自动编译并发布到 GitHub Pages。</li>
+<li>Hugo 通过严格的目录结构规范（content/、static/、assets/、layouts/）自动识别文件角色并进行编译或直接复制。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>Hugo 编译原理</strong>：Hugo 是声明式静态网站生成器，扫描 hugo.toml 配置、content/ 中的 Markdown、layouts/themes/ 中的模板，将 Markdown 转 HTML 填入模板，输出到 public/。</li>
+<li><strong>static/ vs assets/</strong>：static/ 中的文件原封不动直接复制到 public/；assets/ 中的文件需要 Hugo Pipes 处理（压缩、编译 SCSS、图片优化等）后再输出。</li>
+<li><strong>Page Bundles</strong>：目录型文章结构（content/posts/my-post/index.md + cover.jpg），Hugo 自动将同级资源文件一起搬运到输出目录。</li>
+<li><strong>.gitignore 配置</strong>：必须包含 <code>/public</code>、<code>/resources</code>、<code>.hugo_build.lock</code>，防止本地编译产物上传到 GitHub。</li>
+<li><strong>GitHub Actions Source 设置</strong>：Settings → Pages → Source 必须选 &ldquo;GitHub Actions&rdquo; 而非 &ldquo;Deploy from a branch&rdquo;，否则因仓库无 public 目录会 404。</li>
+<li><strong>两种部署方案对比</strong>：方案一（GitHub Actions）仓库干净、换电脑即写即推；方案二（gh-pages 分支）无需 CI 配置但每次需手动编译推送。</li>
+<li><strong>URL 映射规则</strong>：<code>content/about.md</code> → <code>public/about/index.html</code> → <code>/about/</code>；<code>content/posts/first-post.md</code> → <code>/posts/first-post/</code>。</li>
+<li><strong>成本分析</strong>：GitHub Pages 免费、Hugo 免费、Cloudflare 免费、SSL 免费，仅域名可选 ¥10-80/年。</li>
+<li><strong>PaperMod 主题</strong>：极简、响应式、SEO 优秀，技术博客首选；其他推荐主题包括 Blowfish（个人主页）和 Stack（中文技术博客）。</li>
+<li><strong>IT 基础设施工程师推荐组合</strong>：Hugo + PaperMod + GitHub Pages + Cloudflare CDN + 自定义域名，适合长期维护个人技术品牌。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>Hugo 是目前最受欢迎的静态网站生成器之一，非常适合个人博客和技术主页。</p>
+<h3 id="为什么推荐-hugo">为什么推荐 Hugo</h3>
+<p>优点：</p>
+<ul>
+<li>✅ 完全免费、开源</li>
+<li>✅ 生成速度极快（Go 语言开发）</li>
+<li>✅ 不需要数据库</li>
+<li>✅ 可以直接部署到 GitHub Pages</li>
+<li>✅ 支持 Markdown 写文章</li>
+<li>✅ 主题丰富</li>
+<li>✅ SEO 友好</li>
+</ul>
+<p>网站：https://gohugo.io</p>
+<h2 id="推荐架构">推荐架构</h2>
+<p>对于个人技术博客，我推荐：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Hugo + PaperMod
+      +
+GitHub Pages
+      +
+Cloudflare CDN
+      +
+自定义域名</code></pre>
+  </div><p>效果：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>文章.md
+    ↓
+Hugo生成静态HTML
+    ↓
+自动发布
+    ↓
+https://你的用户名.github.io</code></pre>
+  </div><p>以后写博客只需要：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>新建 Markdown
+git push</code></pre>
+  </div><p>网站自动更新。</p>
+<h2 id="安装-hugo">安装 Hugo</h2>
+<h3 id="windows">Windows</h3>
+<p>使用 Chocolatey：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>choco install hugo-extended</span></span></code></pre></div>
+  </div><p>或者 Winget：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>winget install Hugo.Hugo.Extended</span></span></code></pre></div>
+  </div><p>验证：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo version</span></span></code></pre></div>
+  </div><h2 id="创建网站">创建网站</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo new site myblog
+</span></span><span style="display:flex;"><span>cd myblog</span></span></code></pre></div>
+  </div><p>目录结构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>myblog
+├── content
+├── layouts
+├── static
+├── themes
+└── hugo.toml</code></pre>
+  </div><h2 id="安装主题">安装主题</h2>
+<p>推荐几个热门主题：</p>
+<h3 id="papermod最推荐">PaperMod（最推荐）</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>git submodule add <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>https://github.com/adityatelange/hugo-PaperMod.git <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>themes/PaperMod</span></span></code></pre></div>
+  </div><p>配置：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-toml" data-lang="toml"><span style="display:flex;"><span><span style="color:#a6e22e">theme</span> = <span style="color:#e6db74">&#34;PaperMod&#34;</span></span></span></code></pre></div>
+  </div><p>特点：</p>
+<ul>
+<li>极简</li>
+<li>响应式</li>
+<li>SEO 优秀</li>
+<li>技术博客首选</li>
+</ul>
+<p>演示：https://adityatelange.github.io/hugo-PaperMod/</p>
+<h3 id="blowfish">Blowfish</h3>
+<p>适合个人主页 + 博客：https://blowfish.page</p>
+<p>特点：</p>
+<ul>
+<li>现代化</li>
+<li>支持头像</li>
+<li>支持项目展示</li>
+</ul>
+<h3 id="stack">Stack</h3>
+<p>适合中文技术博客：https://github.com/CaiJimmy/hugo-theme-stack</p>
+<p>特点：</p>
+<ul>
+<li>类似知乎专栏</li>
+<li>阅读体验很好</li>
+</ul>
+<h2 id="创建第一篇文章">创建第一篇文章</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo new posts/hello-world.md</span></span></code></pre></div>
+  </div><p>编辑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-markdown" data-lang="markdown"><span style="display:flex;"><span>---
+</span></span><span style="display:flex;"><span><span style="color:#f92672">title</span>: <span style="color:#e6db74">&#34;Hello World&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">date</span>: <span style="color:#e6db74">2026-08-17</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">draft</span>: <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span>---
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>这是我的第一篇 Hugo 博客。</span></span></code></pre></div>
+  </div><h2 id="本地预览">本地预览</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo server -D</span></span></code></pre></div>
+  </div><p>浏览器访问：http://localhost:1313</p>
+<p>修改文件后自动刷新。</p>
+<h2 id="部署到-github-pages">部署到 GitHub Pages</h2>
+<p>创建仓库：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>shenghuaxia.github.io</code></pre>
+  </div><p>然后：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>git init
+</span></span><span style="display:flex;"><span>git add .
+</span></span><span style="display:flex;"><span>git commit -m <span style="color:#e6db74">&#34;first commit&#34;</span>
+</span></span><span style="display:flex;"><span>git remote add origin <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>https://github.com/shenghuaxia/shenghuaxia.github.io.git
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>git push -u origin main</span></span></code></pre></div>
+  </div><p>配置 GitHub Actions 自动构建后，网站就会发布到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>https://shenghuaxia.github.io</code></pre>
+  </div><h2 id="如果你是-it-infrastructure-engineer">如果你是 IT Infrastructure Engineer</h2>
+<p>我会推荐这个组合：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Hugo + PaperMod
+      +
+GitHub Pages
+      +
+Cloudflare CDN
+      +
+自定义域名</code></pre>
+  </div><p>成本：</p>
+<table>
+	<thead>
+			<tr>
+					<th>项目</th>
+					<th>费用</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>Github Pages</td>
+					<td>免费</td>
+			</tr>
+			<tr>
+					<td>Hugo</td>
+					<td>免费</td>
+			</tr>
+			<tr>
+					<td>Cloudflare</td>
+					<td>免费</td>
+			</tr>
+			<tr>
+					<td>SSL 证书</td>
+					<td>免费</td>
+			</tr>
+			<tr>
+					<td>域名（可选）</td>
+					<td>¥10-80/年</td>
+			</tr>
+	</tbody>
+</table>
+<p>最终效果类似：https://www.shenghuaxia.com</p>
+<p>你可以放：</p>
+<ul>
+<li>个人简历</li>
+<li>Azure/AWS 项目经验</li>
+<li>Infrastructure Architecture 文章</li>
+<li>PowerShell 脚本分享</li>
+<li>Kubernetes 实践</li>
+<li>M365 经验总结</li>
+<li>技术笔记库</li>
+</ul>
+<p>这种组合十分适合长期维护个人技术品牌。</p>
+<hr>
+<h3 id="hugo-安装之后会产生一个根目录吗">Hugo 安装之后会产生一个根目录吗？</h3>
+<p>不会。</p>
+<p>Hugo 是一个单文件可执行程序（例如在 Windows 上就是一个 <code>hugo.exe</code> 文件，在 Linux/macOS 上就是一个二进制可执行文件 <code>hugo</code>）。安装 Hugo 只是将这个二进制文件放到了系统的可执行路径（如 <code>/usr/local/bin</code> 或手动指定的目录）中，它本身不会自动在你的电脑上创建一个特定的&quot;Hugo根目录&quot;或项目文件夹。</p>
+<h3 id="如何产生项目根目录">如何产生项目根目录？</h3>
+<p>当你需要使用 Hugo 建站时，需要通过命令行手动运行命令来新建一个站点：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo new site my-blog</span></span></code></pre></div>
+  </div><p>运行该命令后，Hugo 会在你当前的路径下创建一个名为 <code>my-blog</code> 的文件夹，这个文件夹才是你的 Hugo 站点根目录。</p>
+<p>站点根目录生成后，里面通常会包含以下结构：</p>
+<ul>
+<li><code>archetypes/</code>：内容模板</li>
+<li><code>assets/</code>：需要被 Hugo 处理的资源（如 Sass/CSS、JS、图片等）</li>
+<li><code>content/</code>：存放你写的 Markdown 博客/文章内容</li>
+<li><code>data/</code>：存放自定义数据文件（JSON/YAML/TOML）</li>
+<li><code>i18n/</code>：多语言翻译文件</li>
+<li><code>layouts/</code>：自定义 HTML 布局模板</li>
+<li><code>static/</code>：存放静态资源（如无需处理的图片、Favicon 等）</li>
+<li><code>themes/</code>：存放下载的第三方主题</li>
+<li><code>hugo.toml</code>（或 <code>hugo.yaml</code>/<code>hugo.json</code>）：站点的核心配置文件</li>
+</ul>
+<hr>
+<h3 id="git-是否会把这个-my-blog-的所有数据全部传送到-git-仓库中才能产生静态的网页">Git 是否会把这个 my-blog 的所有数据全部传送到 Git 仓库中，才能产生静态的网页？</h3>
+<p>不会，Git 并不负责&quot;生成&quot;静态网页，它只负责&quot;保存和管理代码&quot;。</p>
+<p>实际上，把 Markdown 文章和主题变成静态 HTML 网页的是 Hugo 本身（或托管平台上的构建服务），而不是 Git。</p>
+<p>关于 Git 和 Hugo 协作的工作原理，有以下几个核心概念：</p>
+<h3 id="1-git-到底上传了什么">1. Git 到底上传了什么？</h3>
+<p>当你把 <code>my-blog</code> 文件夹提交到 Git 仓库（如 GitHub、GitLab、Gitee）时：</p>
+<ul>
+<li><strong>上传的内容</strong>：Git 会把 <code>my-blog</code> 目录下的所有源码文件上传上去。这包括你的 Markdown 文章（<code>content/</code>）、配置文件（<code>hugo.toml</code>）、主题配置（<code>themes/</code>）以及你放在 <code>static/</code> 里的资源。</li>
+<li><strong>不会上传的内容</strong>：Git 默认不需要上传 Hugo 编译生成的最终静态网页（通常生成在 <code>public/</code> 目录下）。</li>
+</ul>
+<h3 id="2-静态网页是怎么产生的">2. 静态网页是怎么产生的？</h3>
+<p>要产生静态网页，必须运行 Hugo 的编译命令：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>hugo</span></span></code></pre></div>
+  </div><p>这个命令会读取你的 Markdown 和模板，在本地生成一个 <code>public/</code> 目录，这里面才是纯粹的 HTML、CSS 和 JS 静态网页文件。</p>
+<p>产生静态网页并发布通常有两种常见模式：</p>
+<h4 id="模式-a在本地生成只上传-public手动模式">模式 A：在本地生成，只上传 public/（手动模式）</h4>
+<ol>
+<li>你在本地运行 <code>hugo</code> 生成 <code>public/</code> 文件夹。</li>
+<li>你只把 <code>public/</code> 文件夹里的静态 HTML 内容 push 到 Git 仓库（例如 GitHub Pages 的 main 或 gh-pages 分支）。</li>
+<li>服务器直接读取这些静态 HTML 显示网页。</li>
+</ol>
+<h4 id="模式-b只上传源码由云端自动生成主流推荐模式">模式 B：只上传源码，由云端自动生成（主流推荐模式）</h4>
+<ol>
+<li>你只把 Hugo 的源码（<code>content/</code>、<code>hugo.toml</code> 等）push 到 GitHub 仓库。</li>
+<li>通过 GitHub Actions 或 Cloudflare Pages / Vercel 等平台，云端服务器会自动帮你运行 <code>hugo</code> 命令。</li>
+<li>云端生成静态 HTML 后，自动发布为网站。</li>
+</ol>
+<h3 id="总结">总结</h3>
+<ul>
+<li><strong>Git 的角色</strong>：只管代码和文章源码的版本控制与传输。</li>
+<li><strong>Hugo 的角色</strong>：负责把 Markdown 源码&quot;翻译/渲染&quot;成 HTML 静态网页。</li>
+<li><strong>网页生成条件</strong>：必须经过 Hugo 的编译阶段（无论是在你电脑本地编译，还是在 GitHub Actions/Vercel 等云端服务器上编译），才能得到真正的静态网站。</li>
+<li><strong>不会上传的内容</strong>：Git 默认不需要上传 Hugo 编译生成的最终静态网页（通常生成在 <code>public/</code> 目录下）。</li>
+</ul>
+<hr>
+<h3 id="如果不上传默认的静态网页如何在-github-pages-上发布静态网页呢">如果不上传默认的静态网页，如何在 GitHub Pages 上发布静态网页呢？</h3>
+<p>虽然 Git 仓库里不需要手动提交和上传 <code>public/</code> 目录，但要在 GitHub Pages 上正常显示静态网页，目前行业内最推荐且最优雅的做法是：只把源码推送到 GitHub，由 GitHub 在云端自动编译并发布。</p>
+<p>具体有以下两种主流方案：</p>
+<h3 id="方案一github-actions-自动构建发布主流推荐-">方案一：GitHub Actions 自动构建发布（主流推荐 ⭐⭐⭐⭐⭐）</h3>
+<p>这种方案的逻辑是：你只负责写 Markdown 和写代码，编译（<code>hugo</code>）和发布的工作全部交给 GitHub 的免费服务器处理。</p>
+<h4 id="操作步骤">操作步骤</h4>
+<p><strong>1. 设置忽略规则</strong></p>
+<p>在你的站点根目录下创建一个 <code>.gitignore</code> 文件（如果还没有的话），写入以下内容，防止把本地生成的 <code>public</code> 文件夹提交上去：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-plaintext" data-lang="plaintext"><span style="display:flex;"><span>/public
+</span></span><span style="display:flex;"><span>/resources</span></span></code></pre></div>
+  </div><p><strong>2. 添加 GitHub Actions 自动化工作流文件</strong></p>
+<p>在项目根目录下创建目录和文件：<code>.github/workflows/hugo.yaml</code>，填入以下官方推荐的标准配置：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">name</span>: <span style="color:#ae81ff">Deploy Hugo site to Pages</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">on</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">push</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">branches</span>: [<span style="color:#e6db74">&#34;main&#34;</span>] <span style="color:#75715e"># 当你向 main 分支提交代码时触发</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">permissions</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">contents</span>: <span style="color:#ae81ff">read</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">pages</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">id-token</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">concurrency</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">group</span>: <span style="color:#e6db74">&#34;pages&#34;</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">cancel-in-progress</span>: <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">jobs</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">build</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Checkout</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/checkout@v4</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">submodules</span>: <span style="color:#ae81ff">recursive</span> <span style="color:#75715e"># 如果你的主题是以 git submodule 形式引入的</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Setup Hugo</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">peaceiris/actions-hugo@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">hugo-version</span>: <span style="color:#e6db74">&#39;latest&#39;</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">extended</span>: <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Build</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">run</span>: <span style="color:#ae81ff">hugo --minify</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Upload artifact</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/upload-pages-artifact@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">path</span>: <span style="color:#ae81ff">./public</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">deploy</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">environment</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">name</span>: <span style="color:#ae81ff">github-pages</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">url</span>: <span style="color:#ae81ff">${{ steps.deployment.outputs.page_url }}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">needs</span>: <span style="color:#ae81ff">build</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Deploy to GitHub Pages</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">id</span>: <span style="color:#ae81ff">deployment</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/deploy-pages@v4</span></span></span></code></pre></div>
+  </div><p><strong>3. 配置 GitHub 仓库设置</strong></p>
+<ol>
+<li>将你的项目 push 到 GitHub 仓库。</li>
+<li>打开该 GitHub 仓库，点击 Settings -&gt; Pages。</li>
+<li>在 Build and deployment 下的 Source 选项中，选择 GitHub Actions。</li>
+</ol>
+<p>效果：以后你每次修改文章或配置，只需 <code>git push</code> 上传源码，GitHub 会自动启动虚拟机帮你运行 <code>hugo</code> 命令，并将编译好的 public 部署到你的 GitHub Pages 网址上！</p>
+<h3 id="方案二本地编译发布到独立分支经典传统方案">方案二：本地编译，发布到独立分支（经典/传统方案）</h3>
+<p>如果你不想写 GitHub Actions，也可以在本地编译，但把源码和编译后的静态网页分离开：</p>
+<ul>
+<li><strong>源码存在 main 分支</strong>：日常写博客、改配置都在 main 分支下。</li>
+<li><strong>静态文件存在 gh-pages 分支</strong>：
+<ol>
+<li>在本地运行 <code>hugo</code> 命令生成 <code>public/</code> 文件夹。</li>
+<li>将 <code>public/</code> 目录单独提交并推送到 GitHub 仓库的 <code>gh-pages</code> 分支（可以使用自动化工具如 <code>gh-pages</code> npm 包或编写简单 Bash 脚本）。</li>
+<li>设置 GitHub Pages：在仓库 Settings -&gt; Pages 中，将 Source 设置为 Deploy from a branch，分支选择 <code>gh-pages</code>，目录选择 <code>/ (root)</code>。</li>
+</ol>
+</li>
+</ul>
+<h3 id="两种方案对比">两种方案对比</h3>
+<table>
+	<thead>
+			<tr>
+					<th>方案</th>
+					<th>优势</th>
+					<th>劣势</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>方案一（GitHub Actions）</td>
+					<td>仓库极度干净，本地无需手动编译；换电脑写文章只需 git push 即可</td>
+					<td>第一次需要配置一个 .yaml 脚本文件</td>
+			</tr>
+			<tr>
+					<td>方案二（gh-pages 分支）</td>
+					<td>无需了解 CI/CD 自动化配置</td>
+					<td>每次更新网站都要在本地手动编译并多推一次分支，容易漏步骤</td>
+			</tr>
+	</tbody>
+</table>
+<p>强烈建议使用&quot;方案一&quot;，这也是现代 Hugo 与 GitHub Pages 结合的标准工作流！</p>
+<hr>
+<h3 id="以下步骤是否正确">以下步骤是否正确</h3>
+<p>如果你的目标是通过 GitHub Actions 自动编译并发布 Hugo 网站到 GitHub Pages，那么上面列出的步骤思路方向是正确的，但有两个关键细节需要修正，否则在实际操作时很容易踩坑失败。</p>
+<p>以下是详细的矫正与完整流程说明：</p>
+<h3 id="需要修正的两个关键细节">需要修正的两个关键细节</h3>
+<p><strong>修正点 1：.gitignore 的作用位置</strong></p>
+<ul>
+<li><code>.gitignore</code> 确实需要写入 <code>/public</code>。</li>
+<li>作用：它的作用是告诉 Git 不要把本地编译出来的 <code>public</code> 文件夹提交到 GitHub 仓库。</li>
+<li>注意：GitHub Actions 在云端编译时，会依据你提交的项目源码临时生成 public 目录并自动发布，因此云端不需要你提交本地的 public。</li>
+</ul>
+<p><strong>修正点 2：GitHub Pages 设置中的 Source 选项</strong></p>
+<ul>
+<li>原理解析：在步骤 3 中，仓库 Settings -&gt; Pages -&gt; Source 一定要选择 <strong>GitHub Actions</strong>（而不是默认的 Deploy from a branch）。</li>
+<li>如果选择了分支部署，GitHub 会去找你仓库里的静态文件，而你仓库里又没有提交 public，就会导致 404 或构建失败。</li>
+</ul>
+<h3 id="完整的正确操作流程推荐核对表">完整的正确操作流程（推荐核对表）</h3>
+<h4 id="第一步配置忽略文件-gitignore">第一步：配置忽略文件 .gitignore</h4>
+<p>在项目根目录下，确保 <code>.gitignore</code> 文件包含以下内容：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-plaintext" data-lang="plaintext"><span style="display:flex;"><span>/public
+</span></span><span style="display:flex;"><span>/resources
+</span></span><span style="display:flex;"><span>.hugo_build.lock</span></span></code></pre></div>
+  </div><h4 id="第二步创建-github-actions-工作流文件">第二步：创建 GitHub Actions 工作流文件</h4>
+<p>在项目根目录下创建路径及文件：<code>.github/workflows/hugo.yaml</code>，填入官方推荐的 YAML 自动化脚本（注意其中的分支名要与你仓库的主分支一致，通常是 main 或 master）：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">name</span>: <span style="color:#ae81ff">Deploy Hugo site to Pages</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">on</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">push</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">branches</span>: [<span style="color:#e6db74">&#34;main&#34;</span>] <span style="color:#75715e"># 如果你的默认分支叫 master，这里改成 &#34;master&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">permissions</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">contents</span>: <span style="color:#ae81ff">read</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">pages</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">id-token</span>: <span style="color:#ae81ff">write</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">concurrency</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">group</span>: <span style="color:#e6db74">&#34;pages&#34;</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">cancel-in-progress</span>: <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">jobs</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">build</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Checkout</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/checkout@v4</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">submodules</span>: <span style="color:#ae81ff">recursive</span> <span style="color:#75715e"># 如果你的主题是以 git submodule 引入的</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Setup Hugo</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">peaceiris/actions-hugo@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">hugo-version</span>: <span style="color:#e6db74">&#39;latest&#39;</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">extended</span>: <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Build</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">run</span>: <span style="color:#ae81ff">hugo --minify</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Upload artifact</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/upload-pages-artifact@v3</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">with</span>:
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">path</span>: <span style="color:#ae81ff">./public</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">deploy</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">environment</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">name</span>: <span style="color:#ae81ff">github-pages</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">url</span>: <span style="color:#ae81ff">${{ steps.deployment.outputs.page_url }}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">runs-on</span>: <span style="color:#ae81ff">ubuntu-latest</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">needs</span>: <span style="color:#ae81ff">build</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">steps</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#f92672">name</span>: <span style="color:#ae81ff">Deploy to GitHub Pages</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">id</span>: <span style="color:#ae81ff">deployment</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">uses</span>: <span style="color:#ae81ff">actions/deploy-pages@v4</span></span></span></code></pre></div>
+  </div><h4 id="第三步修改-github-仓库设置">第三步：修改 GitHub 仓库设置</h4>
+<ol>
+<li>将源码 <code>git push</code> 上传到 GitHub。</li>
+<li>打开 GitHub 仓库页面，点击顶部 Settings -&gt; 左侧 Pages。</li>
+<li>在 Build and deployment 下的 Source 下拉菜单中，必须选择 <strong>GitHub Actions</strong>。</li>
+</ol>
+<p>只要保证 Source 选了 GitHub Actions 且 <code>.gitignore</code> 过滤了 public，每次你推送到 main 分支时，GitHub 就会自动帮你生成并发布静态网站了！</p>
+<hr>
+<h3 id="hugo-如何知道是将根目录中的源码发布成静态网站呢如何编译的">Hugo 如何知道是将根目录中的源码发布成静态网站呢，如何编译的</h3>
+<p>这个问题问到了 Hugo 的底层机制。</p>
+<p>简单来说：Hugo &ldquo;知道&quot;如何把根目录编译成静态网站，是因为它有一套强约束的&quot;目录结构规范&quot;和内置的&quot;模板渲染引擎&rdquo;。</p>
+<h4 id="一hugo-如何知道怎么编译核心原理">一、Hugo 如何知道怎么编译？（核心原理）</h4>
+<p>Hugo 是一个声明式（Declarative）的静态网站生成器。你不需要告诉它&quot;怎么编译&quot;，你只需要把文件放在特定的文件夹里，Hugo 在运行 <code>hugo</code> 命令时就会按照固定逻辑进行处理：</p>
+<ol>
+<li>
+<p><strong>扫描目录结构（识别角色）</strong>：当你在根目录下运行 <code>hugo</code> 命令时，它会自动扫描根目录：</p>
+<ul>
+<li><code>hugo.toml</code>（或 <code>config.toml</code>）：读取全局配置（如网站 BaseURL、语言、主题设置等）。</li>
+<li><code>content/</code> 文件夹：Hugo 知道这里面全部是文章内容（Markdown 文件）。</li>
+<li><code>layouts/</code> 或 <code>themes/</code> 文件夹：Hugo 知道这里面全部是页面骨架/模板（HTML + Go Template 语法）。</li>
+</ul>
+</li>
+<li>
+<p><strong>数据与模板结合（渲染过程）</strong>：</p>
+<ul>
+<li>Hugo 遍历 <code>content/</code> 中的每一个 Markdown 文件（解析 Front Matter 元数据，如标题、日期、标签）。</li>
+<li>找到对应的 HTML 模板（例如：文章解析完后套用 <code>single.html</code> 模板；首页套用 <code>index.html</code> 模板）。</li>
+<li>将 Markdown 转化为 HTML，填入模板中，生成完整的 <code>.html</code> 文件。</li>
+</ul>
+</li>
+<li>
+<p><strong>输出结果</strong>：</p>
+<ul>
+<li>全部渲染完成后，Hugo 会在根目录下自动创建并填满 <code>public/</code> 目录。这个 <code>public/</code> 就是最终生成的纯静态网站。</li>
+</ul>
+</li>
+</ol>
+<h4 id="二如果有一些其他文件放在-hugo-里面怎么办">二、如果有一些&quot;其他文件&quot;放在 Hugo 里面怎么办？</h4>
+<p>在实际建站中，你一定会有各种非 Markdown 文件（比如图片、PDF、Robots.txt、下载包、CSS/JS 等）。Hugo 对这些文件的处理机制分为两类：</p>
+<h5 id="1-静态文件放在-static-目录下-原封不动直接复制">1. 静态文件（放在 static/ 目录下）—— 原封不动直接复制</h5>
+<ul>
+<li><strong>机制</strong>：放在 <code>static/</code> 文件夹里的任何文件，Hugo 完全不进行任何编译或改动，在构建时直接原样复制到 <code>public/</code> 根目录下。</li>
+<li><strong>举例</strong>：
+<ul>
+<li>如果文件放在：<code>my-blog/static/resume.pdf</code></li>
+<li>编译后路径：<code>my-blog/public/resume.pdf</code></li>
+<li>访问网址：https://yourdomain.com/resume.pdf</li>
+<li>如果文件放在：<code>my-blog/static/images/avatar.jpg</code></li>
+<li>访问网址：https://yourdomain.com/images/avatar.jpg</li>
+</ul>
+</li>
+</ul>
+<h5 id="2-需要编译处理的资源放在-assets-目录下-打包与加工">2. 需要编译处理的资源（放在 assets/ 目录下）—— 打包与加工</h5>
+<ul>
+<li><strong>机制</strong>：如果你的文件需要被 Hugo 压缩、打包、转换（比如把 <code>.scss</code> 编译成 <code>.css</code>，或者对图片进行自动裁剪/压缩/转 WebP），就放在 <code>assets/</code> 目录下。</li>
+<li><strong>处理</strong>：Hugo 会通过内置的管道（Hugo Pipes）对它们进行处理后再输出到 <code>public/</code>。</li>
+</ul>
+<h5 id="3-文章专属的资源文件页面资源文件夹-page-bundles">3. 文章专属的资源文件（页面资源文件夹 Page Bundles）</h5>
+<p>如果你想把图片和 Markdown 文章放在同一个文件夹里方便管理，可以采用目录型的文章结构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>content/
+└── posts/
+    └── my-first-post/
+        ├── index.md       &lt;-- 文章内容
+        ├── cover.jpg      &lt;-- 该文章配图
+        └── demo.zip       &lt;-- 随文附件</code></pre>
+  </div><ul>
+<li><strong>机制</strong>：Hugo 识别到 <code>index.md</code> 后，会自动把同级目录下的 <code>cover.jpg</code> 和 <code>demo.zip</code> 一起搬运到该文章对应的 HTML 输出目录下。</li>
+</ul>
+<h4 id="文件处理方式总结">文件处理方式总结</h4>
+<table>
+	<thead>
+			<tr>
+					<th>文件/目录类型</th>
+					<th>存放位置</th>
+					<th>Hugo 处理方式</th>
+					<th>最终输出位置</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>博客文章/页面</td>
+					<td>content/&hellip;/xxx.md</td>
+					<td>提取内容，套用 HTML 模板渲染</td>
+					<td>public/&hellip;/xxx/index.html</td>
+			</tr>
+			<tr>
+					<td>网页模板</td>
+					<td>layouts/ 或 themes/</td>
+					<td>编译逻辑，控制页面结构</td>
+					<td>（转化为 HTML，不直接输出模板本身）</td>
+			</tr>
+			<tr>
+					<td>普通文件/PDF/图标</td>
+					<td>static/</td>
+					<td>不做处理，直接复制</td>
+					<td>public/ 的对应相对路径</td>
+			</tr>
+			<tr>
+					<td>样式/脚本/待处理图片</td>
+					<td>assets/</td>
+					<td>压缩、编译、优化后输出</td>
+					<td>public/ 的对应相对路径</td>
+			</tr>
+	</tbody>
+</table>
+<hr>
+<h3 id="实例hugo-目录github-仓库与访问网址的映射关系">实例：Hugo 目录、GitHub 仓库与访问网址的映射关系</h3>
+<h4 id="1-本地-hugo-项目目录结构">1. 本地 Hugo 项目目录结构</h4>
+<p>假设你的 Hugo 项目叫做 <code>my-blog</code>，本地文件目录如下：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>my-blog/                     &lt;-- 站点根目录
+├── .github/
+│   └── workflows/
+│       └── hugo.yaml        &lt;-- GitHub Actions 部署脚本
+├── .gitignore               &lt;-- 里面写了 /public
+├── hugo.toml                &lt;-- Hugo 配置文件
+├── content/                 &lt;-- 存放你的文章/页面
+│   ├── _index.md            &lt;-- 首页自定义内容（可选）
+│   ├── about.md             &lt;-- 关于页面
+│   └── posts/               &lt;-- 博客文章分类
+│       ├── first-post.md    &lt;-- 文章 1
+│       └── second-post.md   &lt;-- 文章 2
+├── static/                  &lt;-- 静态资源（直接复制）
+│   ├── favicon.ico          &lt;-- 网站图标
+│   └── images/
+│       └── avatar.jpg       &lt;-- 头像图片
+├── themes/                  &lt;-- 主题文件夹
+│   └── my-theme/
+└── public/                  &lt;-- 本地执行 hugo 命令后自动生成的文件夹（勿推送到 Git）</code></pre>
+  </div><h4 id="2-与-github-仓库的对应关系">2. 与 GitHub 仓库的对应关系</h4>
+<p>当你执行 <code>git push</code> 把项目推送到 GitHub 时，因为 <code>.gitignore</code> 过滤掉了 <code>public/</code> 目录，GitHub 仓库中保存的内容与本地几乎一模一样（唯独没有 public）：</p>
+<table>
+	<thead>
+			<tr>
+					<th>本地路径</th>
+					<th>上传到 GitHub 仓库</th>
+					<th>最终发布到 GitHub Pages（云端编译后）</th>
+					<th>说明</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>my-blog/</td>
+					<td>仓库根目录</td>
+					<td>网站根目录 (<a href="https://username.github.io/">https://username.github.io/</a>)</td>
+					<td>项目源代码</td>
+			</tr>
+			<tr>
+					<td>my-blog/content/</td>
+					<td>存在</td>
+					<td>映射为 HTML 网页</td>
+					<td>Markdown 源码变身网页</td>
+			</tr>
+			<tr>
+					<td>my-blog/static/</td>
+					<td>存在</td>
+					<td>原封不动放置到网站根路径</td>
+					<td>静态资源直达</td>
+			</tr>
+			<tr>
+					<td>my-blog/public/</td>
+					<td>被 .gitignore 忽略</td>
+					<td>不直接上传</td>
+					<td>云端 GitHub Actions 会自动生成它并发布</td>
+			</tr>
+	</tbody>
+</table>
+<h4 id="3-hugo-源码目录编译后的文件与最终访问网址url的映射关系">3. Hugo 源码目录、编译后的文件与最终访问网址（URL）的映射关系</h4>
+<p>Hugo 会严格按照 <code>content/</code> 目录下的层级结构和文件名，来自动生成对应的 HTML 文件和网站 URL。</p>
+<p>假设你的域名是 <a href="https://username.github.io">https://username.github.io</a>：</p>
+<p><strong>示例 A：普通页面（content/about.md）</strong></p>
+<ul>
+<li>源码位置：<code>content/about.md</code></li>
+<li>Hugo 编译后产物：<code>public/about/index.html</code></li>
+<li>最终访问网址：https://username.github.io/about/</li>
+</ul>
+<p><strong>示例 B：博客文章（content/posts/first-post.md）</strong></p>
+<ul>
+<li>源码位置：<code>content/posts/first-post.md</code></li>
+<li>Hugo 编译后产物：<code>public/posts/first-post/index.html</code></li>
+<li>最终访问网址：https://username.github.io/posts/first-post/</li>
+</ul>
+<p><strong>示例 C：静态资源文件（static/images/avatar.jpg）</strong></p>
+<ul>
+<li>源码位置：<code>static/images/avatar.jpg</code></li>
+<li>Hugo 编译后产物：<code>public/images/avatar.jpg</code>（直接脱掉 static/ 前缀）</li>
+<li>最终访问网址：https://username.github.io/images/avatar.jpg</li>
+</ul>
+<p><strong>示例 D：分类/列表页（自动生成）</strong></p>
+<ul>
+<li>源码位置：Hugo 发现 content/posts/ 目录下有多篇文章</li>
+<li>Hugo 编译后产物：<code>public/posts/index.html</code>（把所有文章组合成一个列表）</li>
+<li>最终访问网址：https://username.github.io/posts/（查看文章列表页）</li>
+</ul>
+<h3 id="一句话总结映射逻辑">一句话总结映射逻辑</h3>
+<ul>
+<li><code>content/</code> 里的 .md 文件 → 套用主题模板 → 变成 <code>public/</code> 里的 index.html → 映射为 网址路径。</li>
+<li><code>static/</code> 里的资源 → 不经过模板过滤 → 原样搬运到 <code>public/</code> 根目录 → 映射为 资源链接。</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

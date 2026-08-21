@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="密文 MySQL 备份（备份脚本中密码的安全管理）
+架构图
+
+    
+      Copy
+    
+    flowchart TB
+    subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;]
+        direction TB
+        A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;]
+        B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;]
+        C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;]
+        D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;]
+        E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;]
+        A --&gt; C --&gt; D --&gt; E
+    end
+
+    subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;]
+        F[&#34;专用 backup 用户&lt;br/&gt;&#43; mysql_config_editor&lt;br/&gt;&#43; crontab 定时任务&#34;]
+    end
+
+    subgraph 备份执行流程[&#34;备份执行流程&#34;]
+        G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;]
+        H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)]
+    end
+
+    D --&gt; F
+    E --&gt; F
+    F -.采用.-&gt; G
+  摘要
+
+不要把密码直接写在备份脚本或命令行里（mysqldump -u root -pMyPassword），执行时可被 ps -ef 或 history 看到密码
+推荐方法1：使用 ~/.my.cnf 配置文件保存凭据，设置 chmod 600 权限，mysql/mysqldump 自动读取，无需输入密码
+推荐方法2：mysql_config_editor（MySQL 5.6&#43;）将密码加密存储在 ~/.mylogin.cnf 中，安全性高于 .my.cnf
+推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多
+不推荐：环境变量 MYSQL_PWD（可被 env 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全）
+Linux &#43; 定时 crontab &#43; mysqldump 场景推荐 ~/.my.cnf 或 mysql_config_editor；生产环境最佳组合是&quot;专用 backup 用户 &#43; mysql_config_editor &#43; crontab&quot;
+
+技术要点
+
+明文密码的风险：mysqldump -u root -pMyPassword 的密码会出现在进程列表（ps -ef）和 shell 历史（history）中
+~/.my.cnf 方案：在 [client] 段写入 user/password，chmod 600 /root/.my.cnf 限制仅属主可读，之后 mysql -e &quot;show databases;&quot; 无需密码
+mysql_config_editor 方案：mysql_config_editor set --login-path=backup --password 生成加密的 ~/.mylogin.cnf；print --all 查看时密码不会显示；调用时用 --login-path=backup
+专用备份账号：CREATE USER &#39;backup&#39;@&#39;localhost&#39; 并仅授予 SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES，实现最小权限原则
+环境变量的坑：export MYSQL_PWD=MyPassword 虽然使命令行不含密码，但 env 和某些进程检查工具仍可能看到
+凭据与压缩管道组合：免密后备份脚本简化为 mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz
+场景化选型：简单场景用 .my.cnf，生产环境用&quot;backup 用户 &#43; mysql_config_editor &#43; crontab&quot;，密码既不出现在脚本里也不出现在进程列表中
+
+原文内容
+是的，不要把密码直接写在脚本里：">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/mysql/mysql-backup-encry/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/mysql/mysql-backup-encry/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="密文 MySQL 备份（备份脚本中密码的安全管理） 架构图 Copyflowchart TB subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;] direction TB A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;] B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;] C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;] D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;] E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;] A --&gt; C --&gt; D --&gt; E end subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;] F[&#34;专用 backup 用户&lt;br/&gt;&#43; mysql_config_editor&lt;br/&gt;&#43; crontab 定时任务&#34;] end subgraph 备份执行流程[&#34;备份执行流程&#34;] G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;] H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)] end D --&gt; F E --&gt; F F -.采用.-&gt; G摘要 不要把密码直接写在备份脚本或命令行里（mysqldump -u root -pMyPassword），执行时可被 ps -ef 或 history 看到密码 推荐方法1：使用 ~/.my.cnf 配置文件保存凭据，设置 chmod 600 权限，mysql/mysqldump 自动读取，无需输入密码 推荐方法2：mysql_config_editor（MySQL 5.6&#43;）将密码加密存储在 ~/.mylogin.cnf 中，安全性高于 .my.cnf 推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多 不推荐：环境变量 MYSQL_PWD（可被 env 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全） Linux &#43; 定时 crontab &#43; mysqldump 场景推荐 ~/.my.cnf 或 mysql_config_editor；生产环境最佳组合是&#34;专用 backup 用户 &#43; mysql_config_editor &#43; crontab&#34; 技术要点 明文密码的风险：mysqldump -u root -pMyPassword 的密码会出现在进程列表（ps -ef）和 shell 历史（history）中 ~/.my.cnf 方案：在 [client] 段写入 user/password，chmod 600 /root/.my.cnf 限制仅属主可读，之后 mysql -e &#34;show databases;&#34; 无需密码 mysql_config_editor 方案：mysql_config_editor set --login-path=backup --password 生成加密的 ~/.mylogin.cnf；print --all 查看时密码不会显示；调用时用 --login-path=backup 专用备份账号：CREATE USER &#39;backup&#39;@&#39;localhost&#39; 并仅授予 SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES，实现最小权限原则 环境变量的坑：export MYSQL_PWD=MyPassword 虽然使命令行不含密码，但 env 和某些进程检查工具仍可能看到 凭据与压缩管道组合：免密后备份脚本简化为 mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz 场景化选型：简单场景用 .my.cnf，生产环境用&#34;backup 用户 &#43; mysql_config_editor &#43; crontab&#34;，密码既不出现在脚本里也不出现在进程列表中 原文内容 是的，不要把密码直接写在脚本里：">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="密文 MySQL 备份（备份脚本中密码的安全管理） 架构图 Copyflowchart TB subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;] direction TB A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;] B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;] C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;] D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;] E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;] A --&gt; C --&gt; D --&gt; E end subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;] F[&#34;专用 backup 用户&lt;br/&gt;&#43; mysql_config_editor&lt;br/&gt;&#43; crontab 定时任务&#34;] end subgraph 备份执行流程[&#34;备份执行流程&#34;] G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;] H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)] end D --&gt; F E --&gt; F F -.采用.-&gt; G摘要 不要把密码直接写在备份脚本或命令行里（mysqldump -u root -pMyPassword），执行时可被 ps -ef 或 history 看到密码 推荐方法1：使用 ~/.my.cnf 配置文件保存凭据，设置 chmod 600 权限，mysql/mysqldump 自动读取，无需输入密码 推荐方法2：mysql_config_editor（MySQL 5.6&#43;）将密码加密存储在 ~/.mylogin.cnf 中，安全性高于 .my.cnf 推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多 不推荐：环境变量 MYSQL_PWD（可被 env 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全） Linux &#43; 定时 crontab &#43; mysqldump 场景推荐 ~/.my.cnf 或 mysql_config_editor；生产环境最佳组合是&#34;专用 backup 用户 &#43; mysql_config_editor &#43; crontab&#34; 技术要点 明文密码的风险：mysqldump -u root -pMyPassword 的密码会出现在进程列表（ps -ef）和 shell 历史（history）中 ~/.my.cnf 方案：在 [client] 段写入 user/password，chmod 600 /root/.my.cnf 限制仅属主可读，之后 mysql -e &#34;show databases;&#34; 无需密码 mysql_config_editor 方案：mysql_config_editor set --login-path=backup --password 生成加密的 ~/.mylogin.cnf；print --all 查看时密码不会显示；调用时用 --login-path=backup 专用备份账号：CREATE USER &#39;backup&#39;@&#39;localhost&#39; 并仅授予 SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES，实现最小权限原则 环境变量的坑：export MYSQL_PWD=MyPassword 虽然使命令行不含密码，但 env 和某些进程检查工具仍可能看到 凭据与压缩管道组合：免密后备份脚本简化为 mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz 场景化选型：简单场景用 .my.cnf，生产环境用&#34;backup 用户 &#43; mysql_config_editor &#43; crontab&#34;，密码既不出现在脚本里也不出现在进程列表中 原文内容 是的，不要把密码直接写在脚本里：">
+	<meta itemprop="wordCount" content="361">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="密文 MySQL 备份（备份脚本中密码的安全管理） 架构图 Copyflowchart TB subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;] direction TB A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;] B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;] C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;] D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;] E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;] A --&gt; C --&gt; D --&gt; E end subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;] F[&#34;专用 backup 用户&lt;br/&gt;&#43; mysql_config_editor&lt;br/&gt;&#43; crontab 定时任务&#34;] end subgraph 备份执行流程[&#34;备份执行流程&#34;] G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;] H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)] end D --&gt; F E --&gt; F F -.采用.-&gt; G摘要 不要把密码直接写在备份脚本或命令行里（mysqldump -u root -pMyPassword），执行时可被 ps -ef 或 history 看到密码 推荐方法1：使用 ~/.my.cnf 配置文件保存凭据，设置 chmod 600 权限，mysql/mysqldump 自动读取，无需输入密码 推荐方法2：mysql_config_editor（MySQL 5.6&#43;）将密码加密存储在 ~/.mylogin.cnf 中，安全性高于 .my.cnf 推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多 不推荐：环境变量 MYSQL_PWD（可被 env 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全） Linux &#43; 定时 crontab &#43; mysqldump 场景推荐 ~/.my.cnf 或 mysql_config_editor；生产环境最佳组合是&#34;专用 backup 用户 &#43; mysql_config_editor &#43; crontab&#34; 技术要点 明文密码的风险：mysqldump -u root -pMyPassword 的密码会出现在进程列表（ps -ef）和 shell 历史（history）中 ~/.my.cnf 方案：在 [client] 段写入 user/password，chmod 600 /root/.my.cnf 限制仅属主可读，之后 mysql -e &#34;show databases;&#34; 无需密码 mysql_config_editor 方案：mysql_config_editor set --login-path=backup --password 生成加密的 ~/.mylogin.cnf；print --all 查看时密码不会显示；调用时用 --login-path=backup 专用备份账号：CREATE USER &#39;backup&#39;@&#39;localhost&#39; 并仅授予 SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES，实现最小权限原则 环境变量的坑：export MYSQL_PWD=MyPassword 虽然使命令行不含密码，但 env 和某些进程检查工具仍可能看到 凭据与压缩管道组合：免密后备份脚本简化为 mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz 场景化选型：简单场景用 .my.cnf，生产环境用&#34;backup 用户 &#43; mysql_config_editor &#43; crontab&#34;，密码既不出现在脚本里也不出现在进程列表中 原文内容 是的，不要把密码直接写在脚本里：">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-backup-encry">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-mysql-backup-encry flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="密文-mysql-备份备份脚本中密码的安全管理">密文 MySQL 备份（备份脚本中密码的安全管理）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份凭据安全方案[&#34;备份凭据安全方案（安全性递增）&#34;]
+        direction TB
+        A[&#34;❌ 不推荐：密码写在脚本/命令行&lt;br/&gt;mysqldump -u root -pMyPassword&lt;br/&gt;可被 ps -ef / history 看到&#34;]
+        B[&#34;❌ 不推荐：环境变量 MYSQL_PWD&lt;br/&gt;可被 env / 进程检查工具看到&#34;]
+        C[&#34;✅ 方法1：~/.my.cnf（最常用）&lt;br/&gt;chmod 600 保护，mysql 客户端自动读取&#34;]
+        D[&#34;✅✅ 方法2：mysql_config_editor&lt;br/&gt;生成加密的 ~/.mylogin.cnf&lt;br/&gt;--login-path=backup 调用&#34;]
+        E[&#34;✅✅✅ 方法3：专用 backup 账号&lt;br/&gt;最小权限 GRANT，风险远小于 root&#34;]
+        A --&gt; C --&gt; D --&gt; E
+    end
+
+    subgraph 生产最佳实践[&#34;生产环境最佳实践组合&#34;]
+        F[&#34;专用 backup 用户&lt;br/&gt;+ mysql_config_editor&lt;br/&gt;+ crontab 定时任务&#34;]
+    end
+
+    subgraph 备份执行流程[&#34;备份执行流程&#34;]
+        G[&#34;crontab 定时触发&#34;] --&gt; H[&#34;mysqldump&lt;br/&gt;--login-path=backup&lt;br/&gt;（无明文密码）&#34;]
+        H --&gt; I[&#34;gzip 压缩&#34;] --&gt; J[(&#34;/data/backup/mysql/&lt;br/&gt;mysql_日期.sql.gz&#34;)]
+    end
+
+    D --&gt; F
+    E --&gt; F
+    F -.采用.-&gt; G</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>不要把密码直接写在备份脚本或命令行里（<code>mysqldump -u root -pMyPassword</code>），执行时可被 <code>ps -ef</code> 或 <code>history</code> 看到密码</li>
+<li>推荐方法1：使用 <code>~/.my.cnf</code> 配置文件保存凭据，设置 <code>chmod 600</code> 权限，mysql/mysqldump 自动读取，无需输入密码</li>
+<li>推荐方法2：<code>mysql_config_editor</code>（MySQL 5.6+）将密码加密存储在 <code>~/.mylogin.cnf</code> 中，安全性高于 <code>.my.cnf</code></li>
+<li>推荐方法3：专门创建最小权限的 backup 备份账号，不用 root，即使凭据泄露风险也小很多</li>
+<li>不推荐：环境变量 <code>MYSQL_PWD</code>（可被 <code>env</code> 或进程检查工具看到，官方也不推荐）和直接写在脚本里（最不安全）</li>
+<li>Linux + 定时 crontab + mysqldump 场景推荐 <code>~/.my.cnf</code> 或 <code>mysql_config_editor</code>；生产环境最佳组合是&quot;专用 backup 用户 + mysql_config_editor + crontab&quot;</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>明文密码的风险</strong>：<code>mysqldump -u root -pMyPassword</code> 的密码会出现在进程列表（<code>ps -ef</code>）和 shell 历史（<code>history</code>）中</li>
+<li><strong><code>~/.my.cnf</code> 方案</strong>：在 <code>[client]</code> 段写入 user/password，<code>chmod 600 /root/.my.cnf</code> 限制仅属主可读，之后 <code>mysql -e &quot;show databases;&quot;</code> 无需密码</li>
+<li><strong><code>mysql_config_editor</code> 方案</strong>：<code>mysql_config_editor set --login-path=backup --password</code> 生成加密的 <code>~/.mylogin.cnf</code>；<code>print --all</code> 查看时密码不会显示；调用时用 <code>--login-path=backup</code></li>
+<li><strong>专用备份账号</strong>：<code>CREATE USER 'backup'@'localhost'</code> 并仅授予 <code>SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES</code>，实现最小权限原则</li>
+<li><strong>环境变量的坑</strong>：<code>export MYSQL_PWD=MyPassword</code> 虽然使命令行不含密码，但 <code>env</code> 和某些进程检查工具仍可能看到</li>
+<li><strong>凭据与压缩管道组合</strong>：免密后备份脚本简化为 <code>mysqldump --single-transaction --all-databases | gzip &gt; 带日期的.sql.gz</code></li>
+<li><strong>场景化选型</strong>：简单场景用 <code>.my.cnf</code>，生产环境用&quot;backup 用户 + mysql_config_editor + crontab&quot;，密码既不出现在脚本里也不出现在进程列表中</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>是的，不要把密码直接写在脚本里：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -pMyPassword</span></span></code></pre></div>
+  </div><p>因为执行时可能被：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ps -ef</span></span></code></pre></div>
+  </div><p>看到密码。</p>
+<h2 id="推荐方法1使用-mycnf最常用">推荐方法1：使用 ~/.my.cnf（最常用）</h2>
+<p>创建：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>vi /root/.my.cnf</span></span></code></pre></div>
+  </div><p>内容：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-ini" data-lang="ini"><span style="display:flex;"><span><span style="color:#66d9ef">[client]</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">user</span><span style="color:#f92672">=</span><span style="color:#e6db74">root</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">password</span><span style="color:#f92672">=</span><span style="color:#e6db74">MyPassword</span></span></span></code></pre></div>
+  </div><p>设置权限：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>chmod <span style="color:#ae81ff">600</span> /root/.my.cnf</span></span></code></pre></div>
+  </div><p>测试：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql -e <span style="color:#e6db74">&#34;show databases;&#34;</span></span></span></code></pre></div>
+  </div><p>无需输入密码。</p>
+<p>备份脚本变成：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --all-databases <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | gzip &gt; /data/backup/mysql/mysql_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>这是最常见的自动备份方式。</p>
+<h2 id="推荐方法2mysql_config_editor更安全">推荐方法2：mysql_config_editor（更安全）</h2>
+<p>MySQL 5.6+ 支持加密保存密码。</p>
+<p>创建认证信息：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql_config_editor set <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --login-path<span style="color:#f92672">=</span>backup <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --host<span style="color:#f92672">=</span>localhost <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --user<span style="color:#f92672">=</span>root <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --password</span></span></code></pre></div>
+  </div><p>输入密码后会生成：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>~/.mylogin.cnf</code></pre>
+  </div><p>这是加密存储的。</p>
+<p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql_config_editor print --all</span></span></code></pre></div>
+  </div><p>密码不会显示。</p>
+<p>备份：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --login-path<span style="color:#f92672">=</span>backup <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --all-databases <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  &gt; backup.sql</span></span></code></pre></div>
+  </div><p>安全性高于 .my.cnf。</p>
+<h2 id="推荐方法3专门创建备份账号">推荐方法3：专门创建备份账号</h2>
+<p>不要使用 root。</p>
+<p>创建用户：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">USER</span> <span style="color:#e6db74">&#39;backup&#39;</span><span style="color:#f92672">@</span><span style="color:#e6db74">&#39;localhost&#39;</span>
+</span></span><span style="display:flex;"><span>IDENTIFIED <span style="color:#66d9ef">BY</span> <span style="color:#e6db74">&#39;StrongPassword&#39;</span>;</span></span></code></pre></div>
+  </div><p>授权：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">GRANT</span> <span style="color:#66d9ef">SELECT</span>, <span style="color:#66d9ef">SHOW</span> <span style="color:#66d9ef">VIEW</span>, <span style="color:#66d9ef">TRIGGER</span>, EVENT, <span style="color:#66d9ef">LOCK</span> TABLES
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">ON</span> <span style="color:#f92672">*</span>.<span style="color:#f92672">*</span> <span style="color:#66d9ef">TO</span> <span style="color:#e6db74">&#39;backup&#39;</span><span style="color:#f92672">@</span><span style="color:#e6db74">&#39;localhost&#39;</span>;</span></span></code></pre></div>
+  </div><p>然后：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-ini" data-lang="ini"><span style="display:flex;"><span><span style="color:#66d9ef">[client]</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">user</span><span style="color:#f92672">=</span><span style="color:#e6db74">backup</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">password</span><span style="color:#f92672">=</span><span style="color:#e6db74">StrongPassword</span></span></span></code></pre></div>
+  </div><p>即使凭据泄露，风险也比 root 小很多。</p>
+<h2 id="不推荐的方法">不推荐的方法</h2>
+<h3 id="环境变量">环境变量</h3>
+<p>虽然可以：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>export MYSQL_PWD<span style="color:#f92672">=</span>MyPassword</span></span></code></pre></div>
+  </div><p>然后：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root</span></span></code></pre></div>
+  </div><p>但：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>env</span></span></code></pre></div>
+  </div><p>或某些进程检查工具仍可能看到。</p>
+<p>官方也不推荐。</p>
+<h3 id="直接写在脚本">直接写在脚本</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -pMyPassword</span></span></code></pre></div>
+  </div><p>最不安全。</p>
+<p>容易被：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>history
+</span></span><span style="display:flex;"><span>ps -ef</span></span></code></pre></div>
+  </div><p>看到。</p>
+<p>对于你这种 Linux + 定时 crontab + mysqldump 的场景，我最推荐：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>方案1：~/.my.cnf（简单）
+或
+方案2：mysql_config_editor（更安全）</code></pre>
+  </div><p>如果是生产环境，我会采用：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>专用 backup 用户
++
+mysql_config_editor
++
+crontab</code></pre>
+  </div><p>这样密码既不会出现在脚本里，也不会出现在进程列表中。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

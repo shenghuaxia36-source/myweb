@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="虚机中容器数据的备份
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph HV[&#34;Hyper-V&#34;]
+        subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;]
+            subgraph DOCK[&#34;Docker&#34;]
+                PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;]
+                VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;]
+                PG --- VOL
+            end
+            BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;]
+            DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;]
+            PG --&gt; DUMP --&gt; BK
+            VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;]
+        end
+        VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM
+        VEEAM -.-&gt;|同时备份 SQL 文件| BK
+    end
+  摘要
+
+pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。
+推荐命令：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql——pg_dump 在容器内运行，但 &gt; 重定向发生在 VM 上。
+很多 PostgreSQL 容器通过 volume 挂载部署（/data/postgres:/var/lib/postgresql/data），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 docker inspect postgres 查看 Mounts 部分即可确认。
+Hyper-V &#43; Ubuntu VM &#43; 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。
+拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。
+
+技术要点
+
+场景1（容器内执行，不推荐）：docker exec -it postgres bash 后 pg_dump -U postgres dbname &gt; backup.sql，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。
+场景2（宿主机执行，推荐）：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。
+场景3（Docker Volume）：compose 中 volumes: - /data/postgres:/var/lib/postgresql/data 时，数据实际在 Ubuntu VM 的 /data/postgres，docker inspect postgres 的 Mounts 显示 &quot;Source&quot;: &quot;/data/postgres&quot;, &quot;Destination&quot;: &quot;/var/lib/postgresql/data&quot;。
+每日逻辑备份脚本：mkdir -p /backup/postgres &#43; docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date &#43;%F).sql。
+Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 &#43; 数据库级恢复两层保障。
+确认数据实际存放位置：docker inspect postgres | grep Source 或直接 docker inspect postgres 查看 &ldquo;Mounts&rdquo;，判断数据库文件在容器内部还是映射到 VM 目录。
+
+原文内容
+这取决于你在哪里执行 pg_dump 命令。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/databackup-container/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/databackup-container/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="虚机中容器数据的备份 架构图 Copyflowchart TD subgraph HV[&#34;Hyper-V&#34;] subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;] subgraph DOCK[&#34;Docker&#34;] PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;] VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;] PG --- VOL end BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;] DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;] PG --&gt; DUMP --&gt; BK VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;] end VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM VEEAM -.-&gt;|同时备份 SQL 文件| BK end摘要 pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。 推荐命令：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql——pg_dump 在容器内运行，但 &gt; 重定向发生在 VM 上。 很多 PostgreSQL 容器通过 volume 挂载部署（/data/postgres:/var/lib/postgresql/data），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 docker inspect postgres 查看 Mounts 部分即可确认。 Hyper-V &#43; Ubuntu VM &#43; 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。 拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。 技术要点 场景1（容器内执行，不推荐）：docker exec -it postgres bash 后 pg_dump -U postgres dbname &gt; backup.sql，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。 场景2（宿主机执行，推荐）：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。 场景3（Docker Volume）：compose 中 volumes: - /data/postgres:/var/lib/postgresql/data 时，数据实际在 Ubuntu VM 的 /data/postgres，docker inspect postgres 的 Mounts 显示 &#34;Source&#34;: &#34;/data/postgres&#34;, &#34;Destination&#34;: &#34;/var/lib/postgresql/data&#34;。 每日逻辑备份脚本：mkdir -p /backup/postgres &#43; docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date &#43;%F).sql。 Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 &#43; 数据库级恢复两层保障。 确认数据实际存放位置：docker inspect postgres | grep Source 或直接 docker inspect postgres 查看 “Mounts”，判断数据库文件在容器内部还是映射到 VM 目录。 原文内容 这取决于你在哪里执行 pg_dump 命令。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="虚机中容器数据的备份 架构图 Copyflowchart TD subgraph HV[&#34;Hyper-V&#34;] subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;] subgraph DOCK[&#34;Docker&#34;] PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;] VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;] PG --- VOL end BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;] DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;] PG --&gt; DUMP --&gt; BK VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;] end VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM VEEAM -.-&gt;|同时备份 SQL 文件| BK end摘要 pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。 推荐命令：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql——pg_dump 在容器内运行，但 &gt; 重定向发生在 VM 上。 很多 PostgreSQL 容器通过 volume 挂载部署（/data/postgres:/var/lib/postgresql/data），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 docker inspect postgres 查看 Mounts 部分即可确认。 Hyper-V &#43; Ubuntu VM &#43; 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。 拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。 技术要点 场景1（容器内执行，不推荐）：docker exec -it postgres bash 后 pg_dump -U postgres dbname &gt; backup.sql，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。 场景2（宿主机执行，推荐）：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。 场景3（Docker Volume）：compose 中 volumes: - /data/postgres:/var/lib/postgresql/data 时，数据实际在 Ubuntu VM 的 /data/postgres，docker inspect postgres 的 Mounts 显示 &#34;Source&#34;: &#34;/data/postgres&#34;, &#34;Destination&#34;: &#34;/var/lib/postgresql/data&#34;。 每日逻辑备份脚本：mkdir -p /backup/postgres &#43; docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date &#43;%F).sql。 Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 &#43; 数据库级恢复两层保障。 确认数据实际存放位置：docker inspect postgres | grep Source 或直接 docker inspect postgres 查看 “Mounts”，判断数据库文件在容器内部还是映射到 VM 目录。 原文内容 这取决于你在哪里执行 pg_dump 命令。">
+	<meta itemprop="wordCount" content="374">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="虚机中容器数据的备份 架构图 Copyflowchart TD subgraph HV[&#34;Hyper-V&#34;] subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;] subgraph DOCK[&#34;Docker&#34;] PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;] VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;] PG --- VOL end BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;] DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;] PG --&gt; DUMP --&gt; BK VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;] end VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM VEEAM -.-&gt;|同时备份 SQL 文件| BK end摘要 pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。 推荐命令：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql——pg_dump 在容器内运行，但 &gt; 重定向发生在 VM 上。 很多 PostgreSQL 容器通过 volume 挂载部署（/data/postgres:/var/lib/postgresql/data），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 docker inspect postgres 查看 Mounts 部分即可确认。 Hyper-V &#43; Ubuntu VM &#43; 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。 拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。 技术要点 场景1（容器内执行，不推荐）：docker exec -it postgres bash 后 pg_dump -U postgres dbname &gt; backup.sql，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。 场景2（宿主机执行，推荐）：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。 场景3（Docker Volume）：compose 中 volumes: - /data/postgres:/var/lib/postgresql/data 时，数据实际在 Ubuntu VM 的 /data/postgres，docker inspect postgres 的 Mounts 显示 &#34;Source&#34;: &#34;/data/postgres&#34;, &#34;Destination&#34;: &#34;/var/lib/postgresql/data&#34;。 每日逻辑备份脚本：mkdir -p /backup/postgres &#43; docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date &#43;%F).sql。 Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 &#43; 数据库级恢复两层保障。 确认数据实际存放位置：docker inspect postgres | grep Source 或直接 docker inspect postgres 查看 “Mounts”，判断数据库文件在容器内部还是映射到 VM 目录。 原文内容 这取决于你在哪里执行 pg_dump 命令。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-databackup-container">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-databackup-container flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机中容器数据的备份">虚机中容器数据的备份</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph HV[&#34;Hyper-V&#34;]
+        subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;]
+            subgraph DOCK[&#34;Docker&#34;]
+                PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;]
+                VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;]
+                PG --- VOL
+            end
+            BK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;]
+            DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;]
+            PG --&gt; DUMP --&gt; BK
+            VOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;]
+        end
+        VEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VM
+        VEEAM -.-&gt;|同时备份 SQL 文件| BK
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。</li>
+<li>推荐命令：<code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql</code>——pg_dump 在容器内运行，但 <code>&gt;</code> 重定向发生在 VM 上。</li>
+<li>很多 PostgreSQL 容器通过 volume 挂载部署（<code>/data/postgres:/var/lib/postgresql/data</code>），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 <code>docker inspect postgres</code> 查看 Mounts 部分即可确认。</li>
+<li>Hyper-V + Ubuntu VM + 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。</li>
+<li>拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>场景1（容器内执行，不推荐）：<code>docker exec -it postgres bash</code> 后 <code>pg_dump -U postgres dbname &gt; backup.sql</code>，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。</li>
+<li>场景2（宿主机执行，推荐）：<code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql</code>，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。</li>
+<li>场景3（Docker Volume）：compose 中 <code>volumes: - /data/postgres:/var/lib/postgresql/data</code> 时，数据实际在 Ubuntu VM 的 /data/postgres，<code>docker inspect postgres</code> 的 Mounts 显示 <code>&quot;Source&quot;: &quot;/data/postgres&quot;, &quot;Destination&quot;: &quot;/var/lib/postgresql/data&quot;</code>。</li>
+<li>每日逻辑备份脚本：<code>mkdir -p /backup/postgres</code> + <code>docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date +%F).sql</code>。</li>
+<li>Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 + 数据库级恢复两层保障。</li>
+<li>确认数据实际存放位置：<code>docker inspect postgres | grep Source</code> 或直接 <code>docker inspect postgres</code> 查看 &ldquo;Mounts&rdquo;，判断数据库文件在容器内部还是映射到 VM 目录。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这取决于你在哪里执行 pg_dump 命令。</p>
+<h2 id="场景1在容器内执行">场景1：在容器内执行</h2>
+<p>例如 PostgreSQL 容器名是 postgres，那么：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker exec -it postgres bash
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>pg_dump -U postgres dbname &gt; backup.sql</span></span></code></pre></div>
+  </div><p>backup.sql 会生成在容器内部当前目录，例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Container
+</span></span><span style="display:flex;"><span>└─ /root/backup.sql</span></span></code></pre></div>
+  </div><p>风险：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>删除容器
+</span></span><span style="display:flex;"><span>   ↓
+</span></span><span style="display:flex;"><span>backup.sql 也没了</span></span></code></pre></div>
+  </div><p>因此不推荐直接备份到容器内部。</p>
+<h2 id="场景2在宿主机ubuntu-vm执行">场景2：在宿主机（Ubuntu VM）执行</h2>
+<p>推荐做法：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker exec postgres <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  pg_dump -U postgres dbname <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  &gt; /backup/dbname_20260805.sql</span></span></code></pre></div>
+  </div><p>这里：pg_dump 在容器内运行，但是 <code>&gt; /backup/dbname_20260805.sql</code> 是由 Ubuntu Shell 负责重定向。</p>
+<p>所以文件实际保存到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Ubuntu VM
+</span></span><span style="display:flex;"><span>└─ /backup/dbname_20260805.sql</span></span></code></pre></div>
+  </div><p>拓扑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>PostgreSQL Container
+</span></span><span style="display:flex;"><span>172.17.0.2
+</span></span><span style="display:flex;"><span>      │
+</span></span><span style="display:flex;"><span>      │ pg_dump
+</span></span><span style="display:flex;"><span>      ▼
+</span></span><span style="display:flex;"><span>Ubuntu VM
+</span></span><span style="display:flex;"><span>10.10.10.22
+</span></span><span style="display:flex;"><span>      │
+</span></span><span style="display:flex;"><span>      ▼
+</span></span><span style="display:flex;"><span>/backup/dbname.sql</span></span></code></pre></div>
+  </div><p>这种方式最适合：Veeam ↓ 备份 Ubuntu VM ↓ 同时备份 SQL 文件。</p>
+<h2 id="场景3使用-docker-volume">场景3：使用 Docker Volume</h2>
+<p>很多 PostgreSQL 容器会这样部署：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">volumes</span>:
+</span></span><span style="display:flex;"><span>  - <span style="color:#ae81ff">/data/postgres:/var/lib/postgresql/data</span></span></span></code></pre></div>
+  </div><p>此时数据实际上存放在 Ubuntu VM（Ubuntu VM └─ /data/postgres），容器只是使用该目录。</p>
+<p>查看命令：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect postgres</span></span></code></pre></div>
+  </div><p>查找 &ldquo;Mounts&rdquo;，例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Source&#34;</span>: <span style="color:#e6db74">&#34;/data/postgres&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Destination&#34;</span>: <span style="color:#e6db74">&#34;/var/lib/postgresql/data&#34;</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><p>说明：数据库文件实际上已经在 VM 中。</p>
+<h2 id="你的环境推荐">你的环境推荐</h2>
+<p>对于：Hyper-V └─ Ubuntu VM └─ PostgreSQL Container</p>
+<p>建议：</p>
+<h3 id="每天生成逻辑备份">每天生成逻辑备份</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir -p /backup/postgres
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>docker exec postgres <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  pg_dump -U postgres dbname <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  &gt; /backup/postgres/dbname_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql</span></span></code></pre></div>
+  </div><p>备份文件保存到：Ubuntu VM /backup/postgres/</p>
+<h3 id="veeam-只备份-vm">Veeam 只备份 VM</h3>
+<p>这样既有：</p>
+<ul>
+<li>VM 级恢复（整机恢复）</li>
+<li>数据库级恢复（恢复单个库）</li>
+</ul>
+<p>两层保障。</p>
+<h3 id="查看-postgresql-数据实际存放位置">查看 PostgreSQL 数据实际存放位置</h3>
+<p>执行：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect postgres | grep Source</span></span></code></pre></div>
+  </div><p>或者：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect postgres</span></span></code></pre></div>
+  </div><p>查看 &ldquo;Mounts&rdquo; 部分，就能确定数据库数据是在容器内部，还是已经映射到 Ubuntu VM 的目录。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

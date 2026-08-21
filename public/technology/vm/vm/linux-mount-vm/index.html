@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Linux 创建分区挂载数据盘
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;]
+        P[&#34;分区 /dev/sdb1&#34;]
+        FS[&#34;文件系统 ext4 (或 xfs)&#34;]
+        P --- FS
+    end
+    MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;]
+    FS --&gt; MOUNT
+    MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;]
+    FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;]
+    BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB
+  摘要
+
+/dev/sdb1 463G /data 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM &#43; /boot &#43; EFI 分区）分开。
+标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。
+用 lsblk -f 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。
+用 blkid /dev/sdb1 获取分区 UUID，与 cat /etc/fstab 中的条目对应，即可确认挂载由谁创建。
+463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。
+
+技术要点
+
+查看磁盘与分区结构：lsblk -f 可同时看到设备、文件系统类型和挂载点；fdisk -l 查看磁盘容量（Disk /dev/sdb: 500 GiB）。
+fdisk 创建分区操作序列：n（新建分区）→ p（主分区）→ 1（分区号 1）→ w（写入），生成 /dev/sdb1。
+格式化文件系统：mkfs.ext4 /dev/sdb1（或 mkfs.xfs /dev/sdb1，CentOS/RHEL 常用 xfs）。
+手动挂载：mkdir /data 后 mount /dev/sdb1 /data，用 df -h 验证出现 /dev/sdb1 463G ... /data。
+开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2（也可用设备路径 /dev/sdb1 /data ext4 defaults 0 2）。
+修改 fstab 后务必执行 mount -a 测试无报错，避免重启后因配置错误进入紧急模式。
+确认挂载来源：cat /etc/fstab 查看 UUID 条目，blkid /dev/sdb1 查看实际 UUID，两者对应即知该挂载的创建方式。
+容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。
+lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。
+
+原文内容
+你这个 /data 挂载（/dev/sdb1 /data 463G）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/linux-mount-vm/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/linux-mount-vm/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Linux 创建分区挂载数据盘 架构图 Copyflowchart TD subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;] P[&#34;分区 /dev/sdb1&#34;] FS[&#34;文件系统 ext4 (或 xfs)&#34;] P --- FS end MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;] FS --&gt; MOUNT MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;] FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;] BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB摘要 /dev/sdb1 463G /data 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM &#43; /boot &#43; EFI 分区）分开。 标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。 用 lsblk -f 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。 用 blkid /dev/sdb1 获取分区 UUID，与 cat /etc/fstab 中的条目对应，即可确认挂载由谁创建。 463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。 技术要点 查看磁盘与分区结构：lsblk -f 可同时看到设备、文件系统类型和挂载点；fdisk -l 查看磁盘容量（Disk /dev/sdb: 500 GiB）。 fdisk 创建分区操作序列：n（新建分区）→ p（主分区）→ 1（分区号 1）→ w（写入），生成 /dev/sdb1。 格式化文件系统：mkfs.ext4 /dev/sdb1（或 mkfs.xfs /dev/sdb1，CentOS/RHEL 常用 xfs）。 手动挂载：mkdir /data 后 mount /dev/sdb1 /data，用 df -h 验证出现 /dev/sdb1 463G ... /data。 开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2（也可用设备路径 /dev/sdb1 /data ext4 defaults 0 2）。 修改 fstab 后务必执行 mount -a 测试无报错，避免重启后因配置错误进入紧急模式。 确认挂载来源：cat /etc/fstab 查看 UUID 条目，blkid /dev/sdb1 查看实际 UUID，两者对应即知该挂载的创建方式。 容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。 lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。 原文内容 你这个 /data 挂载（/dev/sdb1 /data 463G）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Linux 创建分区挂载数据盘 架构图 Copyflowchart TD subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;] P[&#34;分区 /dev/sdb1&#34;] FS[&#34;文件系统 ext4 (或 xfs)&#34;] P --- FS end MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;] FS --&gt; MOUNT MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;] FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;] BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB摘要 /dev/sdb1 463G /data 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM &#43; /boot &#43; EFI 分区）分开。 标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。 用 lsblk -f 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。 用 blkid /dev/sdb1 获取分区 UUID，与 cat /etc/fstab 中的条目对应，即可确认挂载由谁创建。 463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。 技术要点 查看磁盘与分区结构：lsblk -f 可同时看到设备、文件系统类型和挂载点；fdisk -l 查看磁盘容量（Disk /dev/sdb: 500 GiB）。 fdisk 创建分区操作序列：n（新建分区）→ p（主分区）→ 1（分区号 1）→ w（写入），生成 /dev/sdb1。 格式化文件系统：mkfs.ext4 /dev/sdb1（或 mkfs.xfs /dev/sdb1，CentOS/RHEL 常用 xfs）。 手动挂载：mkdir /data 后 mount /dev/sdb1 /data，用 df -h 验证出现 /dev/sdb1 463G ... /data。 开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2（也可用设备路径 /dev/sdb1 /data ext4 defaults 0 2）。 修改 fstab 后务必执行 mount -a 测试无报错，避免重启后因配置错误进入紧急模式。 确认挂载来源：cat /etc/fstab 查看 UUID 条目，blkid /dev/sdb1 查看实际 UUID，两者对应即知该挂载的创建方式。 容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。 lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。 原文内容 你这个 /data 挂载（/dev/sdb1 /data 463G）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。">
+	<meta itemprop="wordCount" content="386">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Linux 创建分区挂载数据盘 架构图 Copyflowchart TD subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;] P[&#34;分区 /dev/sdb1&#34;] FS[&#34;文件系统 ext4 (或 xfs)&#34;] P --- FS end MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;] FS --&gt; MOUNT MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;] FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;] BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB摘要 /dev/sdb1 463G /data 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM &#43; /boot &#43; EFI 分区）分开。 标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。 用 lsblk -f 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。 用 blkid /dev/sdb1 获取分区 UUID，与 cat /etc/fstab 中的条目对应，即可确认挂载由谁创建。 463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。 技术要点 查看磁盘与分区结构：lsblk -f 可同时看到设备、文件系统类型和挂载点；fdisk -l 查看磁盘容量（Disk /dev/sdb: 500 GiB）。 fdisk 创建分区操作序列：n（新建分区）→ p（主分区）→ 1（分区号 1）→ w（写入），生成 /dev/sdb1。 格式化文件系统：mkfs.ext4 /dev/sdb1（或 mkfs.xfs /dev/sdb1，CentOS/RHEL 常用 xfs）。 手动挂载：mkdir /data 后 mount /dev/sdb1 /data，用 df -h 验证出现 /dev/sdb1 463G ... /data。 开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2（也可用设备路径 /dev/sdb1 /data ext4 defaults 0 2）。 修改 fstab 后务必执行 mount -a 测试无报错，避免重启后因配置错误进入紧急模式。 确认挂载来源：cat /etc/fstab 查看 UUID 条目，blkid /dev/sdb1 查看实际 UUID，两者对应即知该挂载的创建方式。 容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。 lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。 原文内容 你这个 /data 挂载（/dev/sdb1 /data 463G）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-linux-mount-VM">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-linux-mount-VM flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="linux-创建分区挂载数据盘">Linux 创建分区挂载数据盘</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;]
+        P[&#34;分区 /dev/sdb1&#34;]
+        FS[&#34;文件系统 ext4 (或 xfs)&#34;]
+        P --- FS
+    end
+    MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;]
+    FS --&gt; MOUNT
+    MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;]
+    FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;]
+    BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li><code>/dev/sdb1 463G /data</code> 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM + /boot + EFI 分区）分开。</li>
+<li>标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。</li>
+<li>用 <code>lsblk -f</code> 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。</li>
+<li>用 <code>blkid /dev/sdb1</code> 获取分区 UUID，与 <code>cat /etc/fstab</code> 中的条目对应，即可确认挂载由谁创建。</li>
+<li>463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>查看磁盘与分区结构：<code>lsblk -f</code> 可同时看到设备、文件系统类型和挂载点；<code>fdisk -l</code> 查看磁盘容量（Disk /dev/sdb: 500 GiB）。</li>
+<li>fdisk 创建分区操作序列：<code>n</code>（新建分区）→ <code>p</code>（主分区）→ <code>1</code>（分区号 1）→ <code>w</code>（写入），生成 /dev/sdb1。</li>
+<li>格式化文件系统：<code>mkfs.ext4 /dev/sdb1</code>（或 <code>mkfs.xfs /dev/sdb1</code>，CentOS/RHEL 常用 xfs）。</li>
+<li>手动挂载：<code>mkdir /data</code> 后 <code>mount /dev/sdb1 /data</code>，用 <code>df -h</code> 验证出现 <code>/dev/sdb1 463G ... /data</code>。</li>
+<li>开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 <code>UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2</code>（也可用设备路径 <code>/dev/sdb1 /data ext4 defaults 0 2</code>）。</li>
+<li>修改 fstab 后务必执行 <code>mount -a</code> 测试无报错，避免重启后因配置错误进入紧急模式。</li>
+<li>确认挂载来源：<code>cat /etc/fstab</code> 查看 UUID 条目，<code>blkid /dev/sdb1</code> 查看实际 UUID，两者对应即知该挂载的创建方式。</li>
+<li>容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。</li>
+<li><code>lsblk -f</code> + <code>cat /etc/fstab</code> 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>你这个 /data 挂载（<code>/dev/sdb1 /data 463G</code>）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。</p>
+<p>通常创建过程类似下面这样：</p>
+<h3 id="查看真实结构">查看真实结构</h3>
+<p>先执行：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>lsblk -f</span></span></code></pre></div>
+  </div><p>你可能会看到类似：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>sda
+</span></span><span style="display:flex;"><span>├─sda1        vfat    /boot/efi
+</span></span><span style="display:flex;"><span>├─sda2        ext4    /boot
+</span></span><span style="display:flex;"><span>└─sda3        LVM2
+</span></span><span style="display:flex;"><span>   └─ubuntu-lv ext4   /
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sdb
+</span></span><span style="display:flex;"><span>└─sdb1        ext4    /data</span></span></code></pre></div>
+  </div><h2 id="创建过程">创建过程</h2>
+<h3 id="1-添加第二块磁盘">1. 添加第二块磁盘</h3>
+<p>系统中新增加：/dev/sdb</p>
+<p>例如一块 500GB 磁盘。</p>
+<p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>fdisk -l</span></span></code></pre></div>
+  </div><p>结果：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Disk /dev/sdb: 500 GiB</span></span></code></pre></div>
+  </div><h3 id="2-创建分区">2. 创建分区</h3>
+<p>使用 fdisk：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>fdisk /dev/sdb</span></span></code></pre></div>
+  </div><p>操作：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>n   # new partition
+</span></span><span style="display:flex;"><span>p   # primary
+</span></span><span style="display:flex;"><span>1   # partition 1
+</span></span><span style="display:flex;"><span>w   # write</span></span></code></pre></div>
+  </div><p>生成：/dev/sdb1</p>
+<h3 id="3-格式化文件系统">3. 格式化文件系统</h3>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkfs.ext4 /dev/sdb1</span></span></code></pre></div>
+  </div><p>或者：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkfs.xfs /dev/sdb1</span></span></code></pre></div>
+  </div><h3 id="4-创建挂载目录">4. 创建挂载目录</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir /data</span></span></code></pre></div>
+  </div><h3 id="5-手动挂载">5. 手动挂载</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mount /dev/sdb1 /data</span></span></code></pre></div>
+  </div><p>验证：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>df -h</span></span></code></pre></div>
+  </div><p>出现：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>/dev/sdb1   463G   ...   /data</span></span></code></pre></div>
+  </div><h3 id="6-设置开机自动挂载">6. 设置开机自动挂载</h3>
+<p>编辑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>vi /etc/fstab</span></span></code></pre></div>
+  </div><p>增加：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2</span></span></code></pre></div>
+  </div><p>或：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>/dev/sdb1  /data  ext4  defaults  0  2</span></span></code></pre></div>
+  </div><p>之后：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mount -a</span></span></code></pre></div>
+  </div><p>测试无报错即可。</p>
+<h2 id="如何确认是谁创建的">如何确认是谁创建的</h2>
+<p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>cat /etc/fstab</span></span></code></pre></div>
+  </div><p>你会看到类似：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>UUID=xxxx /data ext4 defaults 0 2</span></span></code></pre></div>
+  </div><p>再查看 UUID：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>blkid /dev/sdb1</span></span></code></pre></div>
+  </div><p>即可对应起来。</p>
+<h2 id="为什么容量是-463g不是-500g">为什么容量是 463G，不是 500G</h2>
+<p>这是正常现象。</p>
+<p>磁盘厂家：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>500 GB = 500,000,000,000 Bytes</span></span></code></pre></div>
+  </div><p>Linux 显示：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>500,000,000,000 ÷ 1024³ ≈ 465 GiB</span></span></code></pre></div>
+  </div><p>再扣除文件系统开销后：463G</p>
+<p>所以你的 /dev/sdb1 463G 实际上就是一块标准的 500GB 数据盘。</p>
+<p>建议再执行：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>lsblk -f
+</span></span><span style="display:flex;"><span>cat /etc/fstab</span></span></code></pre></div>
+  </div><p>我可以直接帮你看出 /data 是：</p>
+<ul>
+<li>安装系统时创建的；</li>
+<li>后期新增的数据盘；</li>
+<li>还是从旧服务器迁移过来的挂载。</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

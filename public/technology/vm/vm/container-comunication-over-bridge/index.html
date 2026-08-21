@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="虚机容器网桥的建立与两个容器的互通
+架构图
+
+    
+      Copy
+    
+    flowchart TB
+    subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;]
+        eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;]
+
+        subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;]
+            docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;]
+            veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;]
+                pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;]
+            end
+            veth1 --- pg
+            docker0 --- veth1
+        end
+
+        subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;]
+            br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;]
+            veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;]
+                web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;]
+            end
+            veth2 --- web
+            br --- veth2
+        end
+
+        eth0 --- docker0
+        eth0 --- br
+    end
+
+    外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0
+    本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0
+
+    web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg
+    web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg
+
+    容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0
+  摘要
+
+主机上存在两个独立的 Docker Bridge 网络：docker0（172.17.0.1/16，Docker 默认）和 br-4d44c079d811（172.18.0.1/16，对应自定义网络 chery-tools_default）。
+自定义网桥可通过 docker network create 或 Docker Compose 自动创建，Linux 侧接口名规则为 br-&lt;网络ID前12位&gt;。
+不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。
+网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。
+Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。
+每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 lsns、nsenter 查看与进入。
+
+技术要点
+
+两种网桥的来源：docker0 是 Docker 安装时自动创建的默认 Bridge 网络；br-4d44c079d811 是执行 docker network create app-net 或 docker compose up（自动生成 &lt;project&gt;_default 网络）后，Linux 自动创建的网桥接口，名字为 br- &#43; 网络 ID 前 12 位。
+默认网段分配：docker0 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 .2 开始（.1 是网桥自身网关）。可用 --subnet / --gateway 手动指定。
+veth pair 连接容器与网桥：每个容器启动时创建一对 veth，一端在容器内命名为 eth0@ifN，另一端（如 veth61d83e0@if2）挂在宿主机网桥上，master docker0 / master br-xxx 即其归属。
+网络隔离机制：iptables 的 DOCKER 链中 ! -i br-xxx -o br-xxx -j DROP 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。
+方法一（推荐）——同一网络：docker run --network app-net nginx 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。
+方法二——容器多网络（双网卡）：docker network connect bridge web-container 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。
+方法三——宿主机路由（不推荐）：sysctl -w net.ipv4.ip_forward=1 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。
+方法四——Compose 多网络分层：在 docker-compose.yml 中定义 frontend / backend 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。
+NAT 规则自动化：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 iptables -t nat -L -n -v 查看。
+排查工具链：docker network inspect &lt;net&gt; --format &#39;{{len .Containers}}&#39; 查网络内容器数；lsns -t net 列出网络命名空间；docker inspect -f &#39;{{.State.Pid}}&#39; 取容器 PID；nsenter -t &lt;pid&gt; -n ip addr 进入容器 netns 查看其内部视角的 eth0。
+
+原文内容
+从你的输出可以确认：确实是两个独立的 Docker 网络。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/container-comunication-over-bridge/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/container-comunication-over-bridge/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="虚机容器网桥的建立与两个容器的互通 架构图 Copyflowchart TB subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;] eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;] subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;] docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;] veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;] pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;] end veth1 --- pg docker0 --- veth1 end subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;] br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;] veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;] web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;] end veth2 --- web br --- veth2 end eth0 --- docker0 eth0 --- br end 外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0 本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0 web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg 容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0摘要 主机上存在两个独立的 Docker Bridge 网络：docker0（172.17.0.1/16，Docker 默认）和 br-4d44c079d811（172.18.0.1/16，对应自定义网络 chery-tools_default）。 自定义网桥可通过 docker network create 或 Docker Compose 自动创建，Linux 侧接口名规则为 br-&lt;网络ID前12位&gt;。 不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。 网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。 Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。 每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 lsns、nsenter 查看与进入。 技术要点 两种网桥的来源：docker0 是 Docker 安装时自动创建的默认 Bridge 网络；br-4d44c079d811 是执行 docker network create app-net 或 docker compose up（自动生成 &lt;project&gt;_default 网络）后，Linux 自动创建的网桥接口，名字为 br- &#43; 网络 ID 前 12 位。 默认网段分配：docker0 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 .2 开始（.1 是网桥自身网关）。可用 --subnet / --gateway 手动指定。 veth pair 连接容器与网桥：每个容器启动时创建一对 veth，一端在容器内命名为 eth0@ifN，另一端（如 veth61d83e0@if2）挂在宿主机网桥上，master docker0 / master br-xxx 即其归属。 网络隔离机制：iptables 的 DOCKER 链中 ! -i br-xxx -o br-xxx -j DROP 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。 方法一（推荐）——同一网络：docker run --network app-net nginx 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。 方法二——容器多网络（双网卡）：docker network connect bridge web-container 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。 方法三——宿主机路由（不推荐）：sysctl -w net.ipv4.ip_forward=1 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。 方法四——Compose 多网络分层：在 docker-compose.yml 中定义 frontend / backend 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。 NAT 规则自动化：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 iptables -t nat -L -n -v 查看。 排查工具链：docker network inspect &lt;net&gt; --format &#39;{{len .Containers}}&#39; 查网络内容器数；lsns -t net 列出网络命名空间；docker inspect -f &#39;{{.State.Pid}}&#39; 取容器 PID；nsenter -t &lt;pid&gt; -n ip addr 进入容器 netns 查看其内部视角的 eth0。 原文内容 从你的输出可以确认：确实是两个独立的 Docker 网络。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="虚机容器网桥的建立与两个容器的互通 架构图 Copyflowchart TB subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;] eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;] subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;] docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;] veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;] pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;] end veth1 --- pg docker0 --- veth1 end subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;] br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;] veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;] web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;] end veth2 --- web br --- veth2 end eth0 --- docker0 eth0 --- br end 外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0 本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0 web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg 容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0摘要 主机上存在两个独立的 Docker Bridge 网络：docker0（172.17.0.1/16，Docker 默认）和 br-4d44c079d811（172.18.0.1/16，对应自定义网络 chery-tools_default）。 自定义网桥可通过 docker network create 或 Docker Compose 自动创建，Linux 侧接口名规则为 br-&lt;网络ID前12位&gt;。 不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。 网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。 Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。 每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 lsns、nsenter 查看与进入。 技术要点 两种网桥的来源：docker0 是 Docker 安装时自动创建的默认 Bridge 网络；br-4d44c079d811 是执行 docker network create app-net 或 docker compose up（自动生成 &lt;project&gt;_default 网络）后，Linux 自动创建的网桥接口，名字为 br- &#43; 网络 ID 前 12 位。 默认网段分配：docker0 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 .2 开始（.1 是网桥自身网关）。可用 --subnet / --gateway 手动指定。 veth pair 连接容器与网桥：每个容器启动时创建一对 veth，一端在容器内命名为 eth0@ifN，另一端（如 veth61d83e0@if2）挂在宿主机网桥上，master docker0 / master br-xxx 即其归属。 网络隔离机制：iptables 的 DOCKER 链中 ! -i br-xxx -o br-xxx -j DROP 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。 方法一（推荐）——同一网络：docker run --network app-net nginx 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。 方法二——容器多网络（双网卡）：docker network connect bridge web-container 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。 方法三——宿主机路由（不推荐）：sysctl -w net.ipv4.ip_forward=1 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。 方法四——Compose 多网络分层：在 docker-compose.yml 中定义 frontend / backend 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。 NAT 规则自动化：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 iptables -t nat -L -n -v 查看。 排查工具链：docker network inspect &lt;net&gt; --format &#39;{{len .Containers}}&#39; 查网络内容器数；lsns -t net 列出网络命名空间；docker inspect -f &#39;{{.State.Pid}}&#39; 取容器 PID；nsenter -t &lt;pid&gt; -n ip addr 进入容器 netns 查看其内部视角的 eth0。 原文内容 从你的输出可以确认：确实是两个独立的 Docker 网络。">
+	<meta itemprop="wordCount" content="1267">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="虚机容器网桥的建立与两个容器的互通 架构图 Copyflowchart TB subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;] eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;] subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;] docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;] veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;] pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;] end veth1 --- pg docker0 --- veth1 end subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;] br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;] veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;] subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;] web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;] end veth2 --- web br --- veth2 end eth0 --- docker0 eth0 --- br end 外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0 本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0 web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg 容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0摘要 主机上存在两个独立的 Docker Bridge 网络：docker0（172.17.0.1/16，Docker 默认）和 br-4d44c079d811（172.18.0.1/16，对应自定义网络 chery-tools_default）。 自定义网桥可通过 docker network create 或 Docker Compose 自动创建，Linux 侧接口名规则为 br-&lt;网络ID前12位&gt;。 不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。 网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。 Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。 每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 lsns、nsenter 查看与进入。 技术要点 两种网桥的来源：docker0 是 Docker 安装时自动创建的默认 Bridge 网络；br-4d44c079d811 是执行 docker network create app-net 或 docker compose up（自动生成 &lt;project&gt;_default 网络）后，Linux 自动创建的网桥接口，名字为 br- &#43; 网络 ID 前 12 位。 默认网段分配：docker0 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 .2 开始（.1 是网桥自身网关）。可用 --subnet / --gateway 手动指定。 veth pair 连接容器与网桥：每个容器启动时创建一对 veth，一端在容器内命名为 eth0@ifN，另一端（如 veth61d83e0@if2）挂在宿主机网桥上，master docker0 / master br-xxx 即其归属。 网络隔离机制：iptables 的 DOCKER 链中 ! -i br-xxx -o br-xxx -j DROP 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。 方法一（推荐）——同一网络：docker run --network app-net nginx 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。 方法二——容器多网络（双网卡）：docker network connect bridge web-container 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。 方法三——宿主机路由（不推荐）：sysctl -w net.ipv4.ip_forward=1 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。 方法四——Compose 多网络分层：在 docker-compose.yml 中定义 frontend / backend 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。 NAT 规则自动化：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 iptables -t nat -L -n -v 查看。 排查工具链：docker network inspect &lt;net&gt; --format &#39;{{len .Containers}}&#39; 查网络内容器数；lsns -t net 列出网络命名空间；docker inspect -f &#39;{{.State.Pid}}&#39; 取容器 PID；nsenter -t &lt;pid&gt; -n ip addr 进入容器 netns 查看其内部视角的 eth0。 原文内容 从你的输出可以确认：确实是两个独立的 Docker 网络。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-container-comunication-over-bridge">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-container-comunication-over-bridge flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机容器网桥的建立与两个容器的互通">虚机容器网桥的建立与两个容器的互通</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 宿主机[&#34;宿主机 dw-ap01（10.10.10.22/24）&#34;]
+        eth0[&#34;eth0&lt;br/&gt;10.10.10.22/24&lt;br/&gt;物理网卡&#34;]
+
+        subgraph 默认网络[&#34;默认 Bridge 网络（bridge）&#34;]
+            docker0[&#34;docker0 网桥&lt;br/&gt;172.17.0.1/16&lt;br/&gt;Docker 安装时自动创建&#34;]
+            veth1[&#34;veth34a5eca@if201&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器PG[&#34;容器网络命名空间 net:[4026532241]&#34;]
+                pg[&#34;PostgreSQL 容器&lt;br/&gt;eth0@if201: 172.17.0.2/16&lt;br/&gt;端口 5432&#34;]
+            end
+            veth1 --- pg
+            docker0 --- veth1
+        end
+
+        subgraph 自定义网络[&#34;自定义网络 chery-tools_default（app-net）&#34;]
+            br[&#34;br-4d44c079d811 网桥&lt;br/&gt;172.18.0.1/16&lt;br/&gt;docker network create / Compose 创建&#34;]
+            veth2[&#34;veth61d83e0@if2&lt;br/&gt;宿主机侧 veth&#34;]
+            subgraph 容器Web[&#34;容器网络命名空间 net:[4026532171]&#34;]
+                web[&#34;chery-tools 容器（uvicorn）&lt;br/&gt;eth0@if2: 172.18.0.2/16&lt;br/&gt;端口 8000&#34;]
+            end
+            veth2 --- web
+            br --- veth2
+        end
+
+        eth0 --- docker0
+        eth0 --- br
+    end
+
+    外部客户端[&#34;外部客户端&#34;] -- &#34;DNAT: 443 → 172.18.0.2:8000&#34; --&gt; eth0
+    本机进程[&#34;宿主机本机进程&#34;] -- &#34;DNAT: 127.0.0.1:55432 → 172.17.0.2:5432&#34; --&gt; docker0
+
+    web -. &#34;跨网桥默认隔离&lt;br/&gt;（iptables DROP 阻断）&#34; .-&gt; pg
+    web == &#34;推荐：同一网络互通&lt;br/&gt;docker network connect app-net postgres&#34; ==&gt; pg
+
+    容器出网[&#34;外部网络&#34;] &lt;-. &#34;MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16 SNAT&#34; .- eth0</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>主机上存在两个独立的 Docker Bridge 网络：<code>docker0</code>（172.17.0.1/16，Docker 默认）和 <code>br-4d44c079d811</code>（172.18.0.1/16，对应自定义网络 <code>chery-tools_default</code>）。</li>
+<li>自定义网桥可通过 <code>docker network create</code> 或 Docker Compose 自动创建，Linux 侧接口名规则为 <code>br-&lt;网络ID前12位&gt;</code>。</li>
+<li>不同 Bridge 网络默认互相隔离：Docker 通过 iptables（DOCKER 链中的 DROP 规则）阻断跨网桥访问，避免容器间意外互通。</li>
+<li>网络互通的推荐方案是把两个容器加入同一个自定义网络（自定义网络自带 DNS，可按容器名互访）；也可让一个容器加入多个网络（双网卡），或用宿主机路由（不推荐）。</li>
+<li>Docker 会自动为网桥配置 NAT：MASQUERADE 实现容器出网，DNAT 实现端口发布（如宿主机 443 → 172.18.0.2:8000）。</li>
+<li>每个容器拥有独立的网络命名空间（netns），通过 veth pair 与宿主机侧网桥连接，可用 <code>lsns</code>、<code>nsenter</code> 查看与进入。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>两种网桥的来源</strong>：<code>docker0</code> 是 Docker 安装时自动创建的默认 Bridge 网络；<code>br-4d44c079d811</code> 是执行 <code>docker network create app-net</code> 或 <code>docker compose up</code>（自动生成 <code>&lt;project&gt;_default</code> 网络）后，Linux 自动创建的网桥接口，名字为 <code>br-</code> + 网络 ID 前 12 位。</li>
+<li><strong>默认网段分配</strong>：<code>docker0</code> 使用 172.17.0.0/16，网关 172.17.0.1；每新建一个 bridge 网络，网段依次递增（172.18.0.0/16、172.19.0.0/16……）。容器地址从 <code>.2</code> 开始（<code>.1</code> 是网桥自身网关）。可用 <code>--subnet</code> / <code>--gateway</code> 手动指定。</li>
+<li><strong>veth pair 连接容器与网桥</strong>：每个容器启动时创建一对 veth，一端在容器内命名为 <code>eth0@ifN</code>，另一端（如 <code>veth61d83e0@if2</code>）挂在宿主机网桥上，<code>master docker0</code> / <code>master br-xxx</code> 即其归属。</li>
+<li><strong>网络隔离机制</strong>：iptables 的 DOCKER 链中 <code>! -i br-xxx -o br-xxx -j DROP</code> 规则丢弃所有非本网桥进入、发往本网桥的流量，因此 172.17.0.2 与 172.18.0.2 之间默认 ping 不通。</li>
+<li><strong>方法一（推荐）——同一网络</strong>：<code>docker run --network app-net nginx</code> 让多个容器加入同一自定义网络，Docker 内置 DNS 使它们可直接用容器名/别名互相解析访问。</li>
+<li><strong>方法二——容器多网络（双网卡）</strong>：<code>docker network connect bridge web-container</code> 给运行中容器追加网卡，容器同时持有 172.17.0.10 和 172.18.0.10，像双网卡服务器一样桥接两个网络。</li>
+<li><strong>方法三——宿主机路由（不推荐）</strong>：<code>sysctl -w net.ipv4.ip_forward=1</code> 开启转发并放行 iptables，实现 172.17.0.0/16 ↔ 172.18.0.0/16 互通，但管理复杂、绕过了 Docker 的隔离设计。</li>
+<li><strong>方法四——Compose 多网络分层</strong>：在 <code>docker-compose.yml</code> 中定义 <code>frontend</code> / <code>backend</code> 等多个网络，nginx 同时接入两层，app、mysql 只在 backend，实现网络分层的中间层拓扑（企业常用）。</li>
+<li><strong>NAT 规则自动化</strong>：创建带端口映射的容器时 Docker 自动写入 DNAT（443 → 172.18.0.2:8000、127.0.0.1:55432 → 172.17.0.2:5432）与 MASQUERADE（源 172.17/172.18 出网伪装），可通过 <code>iptables -t nat -L -n -v</code> 查看。</li>
+<li><strong>排查工具链</strong>：<code>docker network inspect &lt;net&gt; --format '{{len .Containers}}'</code> 查网络内容器数；<code>lsns -t net</code> 列出网络命名空间；<code>docker inspect -f '{{.State.Pid}}'</code> 取容器 PID；<code>nsenter -t &lt;pid&gt; -n ip addr</code> 进入容器 netns 查看其内部视角的 eth0。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>从你的输出可以确认：确实是两个独立的 Docker 网络。</p>
+<h3 id="1-这两个网桥是什么如何创建的">1. 这两个网桥是什么？如何创建的？</h3>
+<h4 id="docker0">docker0</h4>
+<p>这是 Docker 安装时自动创建的默认 Bridge 网络。</p>
+<table>
+	<thead>
+			<tr>
+					<th>网络 ID</th>
+					<th>名称</th>
+					<th>驱动</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>4c5132dbffdd</td>
+					<td>bridge</td>
+					<td>bridge</td>
+			</tr>
+	</tbody>
+</table>
+<p>对应的 Linux 网桥就是 <code>docker0</code>。容器如果没有指定网络（如 <code>docker run nginx</code>），默认加入 <code>bridge</code> 网络，网段为 <code>172.17.0.0/16</code>，网关 <code>172.17.0.1/16</code>。</p>
+<h4 id="br-4d44c079d811">br-4d44c079d811</h4>
+<p>这是 Docker 创建的自定义 Bridge 网络，通常由以下方式产生：</p>
+<p><strong>Docker 命令：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create app-net</span></span></code></pre></div>
+  </div><p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network inspect app-net</span></span></code></pre></div>
+  </div><p>结果：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Subnet: 172.18.0.0/16</span></span></code></pre></div>
+  </div><p>Linux 会自动生成 <code>br-4d44c079d811</code>。</p>
+<p><strong>Docker Compose：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">services</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">web</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">image</span>: <span style="color:#ae81ff">nginx</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">default:</span></span></span></code></pre></div>
+  </div><p>执行 <code>docker compose up -d</code> 后，Docker 会自动创建 <code>project_default</code> 网络，对应 Linux 中通常变成 <code>br-xxxxxxxx</code>。</p>
+<h4 id="查看实际网络名">查看实际网络名</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network ls</span></span></code></pre></div>
+  </div><p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NETWORK ID          NAME
+</span></span><span style="display:flex;"><span>4d44c079d811        app-net</span></span></code></pre></div>
+  </div><p>这样就能确认 <code>app-net</code> 实际上对应 <code>br-4d44c079d811</code>。</p>
+<h3 id="2-两个网桥的容器是否默认互通">2. 两个网桥的容器是否默认互通？</h3>
+<p>答案：<strong>默认不互通</strong>。</p>
+<p>网络结构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>docker0 (172.17.0.1/16)
+</span></span><span style="display:flex;"><span>    |
+</span></span><span style="display:flex;"><span>    +--- Container-A (172.17.0.2)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>br-4d44c079d811 (172.18.0.1/16)
+</span></span><span style="display:flex;"><span>    |
+</span></span><span style="display:flex;"><span>    +--- Container-B (172.18.0.2)</span></span></code></pre></div>
+  </div><p>Docker 默认会隔离不同 Bridge 网络。因此在 Container-A 中执行 <code>ping 172.18.0.2</code>，大概率失败。</p>
+<h4 id="为什么隔离">为什么隔离？</h4>
+<p>Docker 默认添加防火墙规则（<code>DOCKER-ISOLATION</code> / DOCKER 链 DROP 规则），目的是避免容器间意外访问：Network A 不能直接访问 Network B。</p>
+<h3 id="3-如何实现两个网络互通">3. 如何实现两个网络互通？</h3>
+<p>有多种方法。</p>
+<h4 id="方法一将容器加入同一个网络推荐">方法一：将容器加入同一个网络（推荐）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create app-net
+</span></span><span style="display:flex;"><span>docker run --network app-net nginx
+</span></span><span style="display:flex;"><span>docker run --network app-net redis</span></span></code></pre></div>
+  </div><p>结果：容器分别获得 <code>172.18.0.2</code>、<code>172.18.0.3</code>，直接互通。</p>
+<h4 id="方法二一个容器加入多个网络">方法二：一个容器加入多个网络</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network connect bridge web-container</span></span></code></pre></div>
+  </div><p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect web-container</span></span></code></pre></div>
+  </div><p>结果：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>bridge   172.17.0.10
+</span></span><span style="display:flex;"><span>app-net  172.18.0.10</span></span></code></pre></div>
+  </div><p>拓扑变成（双网卡容器）：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>       docker0
+</span></span><span style="display:flex;"><span>    172.17.0.0/16
+</span></span><span style="display:flex;"><span>          |
+</span></span><span style="display:flex;"><span>   +--------------+
+</span></span><span style="display:flex;"><span>   | Container A  |
+</span></span><span style="display:flex;"><span>   | 172.17.0.10  |
+</span></span><span style="display:flex;"><span>   | 172.18.0.10  |
+</span></span><span style="display:flex;"><span>   +--------------+
+</span></span><span style="display:flex;"><span>          |
+</span></span><span style="display:flex;"><span>    172.18.0.0/16
+</span></span><span style="display:flex;"><span>       app-net
+</span></span><span style="display:flex;"><span>          |
+</span></span><span style="display:flex;"><span>   +--------------+
+</span></span><span style="display:flex;"><span>   | Container B  |
+</span></span><span style="display:flex;"><span>   | 172.18.0.20  |
+</span></span><span style="display:flex;"><span>   +--------------+</span></span></code></pre></div>
+  </div><p>此时 A ↔ B 可以通信，就像 Windows 服务器有两块网卡。</p>
+<h4 id="方法三宿主机路由不推荐">方法三：宿主机路由（不推荐）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sysctl -w net.ipv4.ip_forward<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span></span></span></code></pre></div>
+  </div><p>再放开 iptables，实现 <code>172.17.0.0/16 ↔ 172.18.0.0/16</code> 路由互通，但管理复杂。</p>
+<h4 id="方法四docker-compose-网络设计企业常用">方法四：Docker Compose 网络设计（企业常用）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">services</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">nginx</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#ae81ff">frontend</span>
+</span></span><span style="display:flex;"><span>      - <span style="color:#ae81ff">backend</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">app</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#ae81ff">backend</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">frontend</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">backend:</span></span></span></code></pre></div>
+  </div><p>拓扑：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>frontend
+</span></span><span style="display:flex;"><span>    |
+</span></span><span style="display:flex;"><span>  nginx
+</span></span><span style="display:flex;"><span>    |
+</span></span><span style="display:flex;"><span>backend
+</span></span><span style="display:flex;"><span>  /    \
+</span></span><span style="display:flex;"><span>app   mysql</span></span></code></pre></div>
+  </div><p>这样 <code>nginx</code> 作为中间层，<code>app</code>、<code>mysql</code> 不直接暴露在 frontend。</p>
+<h3 id="你的环境实际情况">你的环境实际情况</h3>
+<p>根据之前的 NAT 规则推测：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>docker0
+</span></span><span style="display:flex;"><span>└─ PostgreSQL (172.17.0.2:5432)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>app-net (br-4d44c079d811)
+</span></span><span style="display:flex;"><span>└─ Web Application (172.18.0.2:8000)</span></span></code></pre></div>
+  </div><p>如果 Web 容器需要连接 PostgreSQL，最好的方式是把 PostgreSQL 也加入 <code>app-net</code>：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network connect app-net postgres</span></span></code></pre></div>
+  </div><p>这样无需开放端口，也无需配置额外路由。</p>
+<hr>
+<h3 id="附实际环境排查记录">附：实际环境排查记录</h3>
+<h4 id="容器信息docker-inspect-92b35d1d75b3-摘要">容器信息（docker inspect 92b35d1d75b3 摘要）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Name&#34;</span>: <span style="color:#e6db74">&#34;/chery-tools&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Path&#34;</span>: <span style="color:#e6db74">&#34;uvicorn&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Args&#34;</span>: [<span style="color:#e6db74">&#34;app.main:app&#34;</span>, <span style="color:#e6db74">&#34;--host&#34;</span>, <span style="color:#e6db74">&#34;0.0.0.0&#34;</span>, <span style="color:#e6db74">&#34;--port&#34;</span>, <span style="color:#e6db74">&#34;8000&#34;</span>,
+</span></span><span style="display:flex;"><span>           <span style="color:#e6db74">&#34;--ssl-keyfile&#34;</span>, <span style="color:#e6db74">&#34;/certs/key.pem&#34;</span>, <span style="color:#e6db74">&#34;--ssl-certfile&#34;</span>, <span style="color:#e6db74">&#34;/certs/cert.pem&#34;</span>],
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;HostConfig&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;NetworkMode&#34;</span>: <span style="color:#e6db74">&#34;chery-tools_default&#34;</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;PortBindings&#34;</span>: { <span style="color:#f92672">&#34;8000/tcp&#34;</span>: [ { <span style="color:#f92672">&#34;HostPort&#34;</span>: <span style="color:#e6db74">&#34;443&#34;</span> } ] }
+</span></span><span style="display:flex;"><span>  },
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;NetworkSettings&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Networks&#34;</span>: {
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;chery-tools_default&#34;</span>: {
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">&#34;Gateway&#34;</span>: <span style="color:#e6db74">&#34;172.18.0.1&#34;</span>,
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">&#34;IPAddress&#34;</span>: <span style="color:#e6db74">&#34;172.18.0.2&#34;</span>,
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">&#34;MacAddress&#34;</span>: <span style="color:#e6db74">&#34;e6:5c:66:85:49:61&#34;</span>,
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">&#34;IPPrefixLen&#34;</span>: <span style="color:#ae81ff">16</span>,
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">&#34;DNSNames&#34;</span>: [<span style="color:#e6db74">&#34;chery-tools&#34;</span>, <span style="color:#e6db74">&#34;invoice-api&#34;</span>, <span style="color:#e6db74">&#34;92b35d1d75b3&#34;</span>]
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><p>（完整 inspect 输出还包含 Binds 挂载 <code>certs:/certs:ro</code>、卷 <code>chery-tools_dedup-data:/data:rw</code>、restart policy <code>unless-stopped</code> 及大量业务环境变量。）</p>
+<h4 id="网络列表">网络列表</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network ls</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NETWORK ID     NAME                  DRIVER    SCOPE
+</span></span><span style="display:flex;"><span>4c5132dbffdd   bridge                bridge    local
+</span></span><span style="display:flex;"><span>4d44c079d811   chery-tools_default   bridge    local
+</span></span><span style="display:flex;"><span>ee53c0d10f11   host                  host      local
+</span></span><span style="display:flex;"><span>1ba1dd80738a   none                  null      local</span></span></code></pre></div>
+  </div><h4 id="宿主机接口ip-addr-摘要">宿主机接口（ip addr 摘要）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>2: eth0: inet 10.10.10.22/24        # 宿主机物理网卡
+</span></span><span style="display:flex;"><span>3: br-4d44c079d811: inet 172.18.0.1/16   # 自定义网络网桥
+</span></span><span style="display:flex;"><span>4: docker0: inet 172.17.0.1/16           # 默认网桥
+</span></span><span style="display:flex;"><span>201: veth34a5eca@if2: master docker0          # PostgreSQL 容器的 veth
+</span></span><span style="display:flex;"><span>209: veth61d83e0@if2: master br-4d44c079d811  # chery-tools 容器的 veth</span></span></code></pre></div>
+  </div><h4 id="容器使用的地址">容器使用的地址</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>docker inspect postgres      →  172.17.0.2  (PostgreSQL)
+</span></span><span style="display:flex;"><span>docker inspect 92b35d1d75b3  →  172.18.0.2  (chery-tools)</span></span></code></pre></div>
+  </div><h4 id="网络详情docker-network-inspect-chery-tools_default-摘要">网络详情（docker network inspect chery-tools_default 摘要）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Name&#34;</span>: <span style="color:#e6db74">&#34;chery-tools_default&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Driver&#34;</span>: <span style="color:#e6db74">&#34;bridge&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;IPAM&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;Config&#34;</span>: [ { <span style="color:#f92672">&#34;Subnet&#34;</span>: <span style="color:#e6db74">&#34;172.18.0.0/16&#34;</span>, <span style="color:#f92672">&#34;Gateway&#34;</span>: <span style="color:#e6db74">&#34;172.18.0.1&#34;</span> } ]
+</span></span><span style="display:flex;"><span>  },
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Containers&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;c4dec471136b...&#34;</span>: { <span style="color:#f92672">&#34;Name&#34;</span>: <span style="color:#e6db74">&#34;chery-tools&#34;</span>, <span style="color:#f92672">&#34;IPv4Address&#34;</span>: <span style="color:#e6db74">&#34;172.18.0.2/16&#34;</span> }
+</span></span><span style="display:flex;"><span>  },
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Status&#34;</span>: { <span style="color:#f92672">&#34;IPAM&#34;</span>: { <span style="color:#f92672">&#34;Subnets&#34;</span>: { <span style="color:#f92672">&#34;172.18.0.0/16&#34;</span>: { <span style="color:#f92672">&#34;IPsInUse&#34;</span>: <span style="color:#ae81ff">4</span>, <span style="color:#f92672">&#34;DynamicIPsAvailable&#34;</span>: <span style="color:#ae81ff">65532</span> } } } }
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><h4 id="nat-规则iptables--t-nat--l--n--v-摘要">NAT 规则（iptables -t nat -L -n -v 摘要）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Chain POSTROUTING:
+</span></span><span style="display:flex;"><span>  MASQUERADE  --  *  !docker0          172.17.0.0/16  0.0.0.0/0
+</span></span><span style="display:flex;"><span>  MASQUERADE  --  *  !br-4d44c079d811  172.18.0.0/16  0.0.0.0/0
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Chain DOCKER:
+</span></span><span style="display:flex;"><span>  DNAT  tcp  !docker0          0.0.0.0/0  127.0.0.1     tcp dpt:55432  to:172.17.0.2:5432
+</span></span><span style="display:flex;"><span>  DNAT  tcp  !br-4d44c079d811  0.0.0.0/0  0.0.0.0/0     tcp dpt:443    to:172.18.0.2:8000</span></span></code></pre></div>
+  </div><h4 id="自定义网桥时指定网段与网关">自定义网桥时指定网段与网关</h4>
+<p>创建 Docker 自定义网桥时，可以通过 <code>--subnet</code> 和 <code>--gateway</code> 参数手动指定网段和网关：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network inspect app-net
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver bridge <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet &lt;网段/掩码&gt; <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --gateway &lt;网关IP&gt; <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  app-net
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 示例</span>
+</span></span><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver bridge <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet 192.168.100.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --gateway 192.168.100.1 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  app-net</span></span></code></pre></div>
+  </div><p>在 docker-compose.yml 中配置：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">version</span>: <span style="color:#e6db74">&#39;3.8&#39;</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">services</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">web</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">image</span>: <span style="color:#ae81ff">nginx</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>      - <span style="color:#ae81ff">app-net</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">networks</span>:
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">app-net</span>:
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">driver</span>: <span style="color:#ae81ff">bridge</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">ipam</span>:
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">config</span>:
+</span></span><span style="display:flex;"><span>        - <span style="color:#f92672">subnet</span>: <span style="color:#ae81ff">192.168.100.0</span><span style="color:#ae81ff">/24</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">gateway</span>: <span style="color:#ae81ff">192.168.100.1</span></span></span></code></pre></div>
+  </div><h4 id="为什么容器地址从-1721702-开始如何查看网络下的容器">为什么容器地址从 172.17.0.2 开始？如何查看网络下的容器</h4>
+<p><code>.1</code> 被网桥自身（网关）占用，容器 IP 从 <code>.2</code> 开始分配。</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network ls
+</span></span><span style="display:flex;"><span>docker network inspect &lt;network-name&gt;
+</span></span><span style="display:flex;"><span>docker network inspect &lt;network-name&gt; --format <span style="color:#e6db74">&#39;{{len .Containers}}&#39;</span>
+</span></span><span style="display:flex;"><span>docker network inspect &lt;network-name&gt; --format <span style="color:#e6db74">&#39;{{range $id,$c := .Containers}}{{$c.Name}} {{$c.IPv4Address}}{{println}}{{end}}&#39;</span></span></span></code></pre></div>
+  </div><h4 id="查看命名空间">查看命名空间</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>lsns -t net</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NS TYPE NPROCS     PID USER    NETNSID NSFS                           COMMAND
+</span></span><span style="display:flex;"><span>4026531840 net     193       1 root unassigned /run/docker/netns/default /usr/lib/systemd/systemd --system --deserialize=119
+</span></span><span style="display:flex;"><span>4026532171 net       1 1264590 root          0 /run/docker/netns/14fcccec6b3a /usr/local/bin/python3.13 /usr/local/bin/uvicorn app.main:app --host 0.0.0.0 --
+</span></span><span style="display:flex;"><span>4026532241 net       6 1243997 999           1 /run/docker/netns/207b600e3a93 postgres</span></span></code></pre></div>
+  </div><h4 id="查看容器对应的-namespace-并进入">查看容器对应的 Namespace 并进入</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect -f <span style="color:#e6db74">&#39;{{.State.Pid}}&#39;</span> tmp-pg
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 1243997</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ls -l /proc/1243997/ns/net
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># lrwxrwxrwx ... /proc/1243997/ns/net -&gt; &#39;net:[4026532241]&#39;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 进入容器网络命名空间查看</span>
+</span></span><span style="display:flex;"><span>nsenter -t <span style="color:#ae81ff">1243997</span> -n ip addr</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>1: lo: inet 127.0.0.1/8
+</span></span><span style="display:flex;"><span>2: eth0@if201: inet 172.17.0.2/16 brd 172.17.255.255 scope global eth0</span></span></code></pre></div>
+  </div><h4 id="docker-自动生成的隔离规则iptables--l-docker--n--v">Docker 自动生成的隔离规则（iptables -L DOCKER -n -v）</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Chain DOCKER (2 references)
+</span></span><span style="display:flex;"><span>pkts bytes target  prot opt in                 out                source       destination
+</span></span><span style="display:flex;"><span>14   840   ACCEPT  6   --  !br-4d44c079d811    br-4d44c079d811    0.0.0.0/0    172.18.0.2   tcp dpt:8000
+</span></span><span style="display:flex;"><span>0    0     ACCEPT  6   --  !docker0            docker0            0.0.0.0/0    172.17.0.2   tcp dpt:5432
+</span></span><span style="display:flex;"><span>0    0     DROP    0   --  !br-4d44c079d811    br-4d44c079d811    0.0.0.0/0    0.0.0.0/0
+</span></span><span style="display:flex;"><span>0    0     DROP    0   --  !docker0            docker0            0.0.0.0/0    0.0.0.0/0</span></span></code></pre></div>
+  </div><p>其中最后两条 DROP 规则就是不同 bridge 网络之间默认隔离的来源。FORWARD 链的完整链路为 <code>FORWARD → DOCKER-USER → DOCKER-FORWARD → DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE → DOCKER</code>，并与 UFW 规则共存（filter 表 INPUT 默认 DROP，由 ufw-* 链放行 SSH/443/8080 等端口）。</p>
+<h4 id="iptables-save-关键规则摘录">iptables-save 关键规则摘录</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>*raw
+</span></span><span style="display:flex;"><span>-A PREROUTING -d 172.17.0.2/32 ! -i docker0 -j DROP
+</span></span><span style="display:flex;"><span>-A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp -m tcp --dport 55432 -j DROP
+</span></span><span style="display:flex;"><span>-A PREROUTING -d 172.18.0.2/32 ! -i br-4d44c079d811 -j DROP
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>*nat
+</span></span><span style="display:flex;"><span>-A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE
+</span></span><span style="display:flex;"><span>-A POSTROUTING -s 172.18.0.0/16 ! -o br-4d44c079d811 -j MASQUERADE
+</span></span><span style="display:flex;"><span>-A DOCKER -d 127.0.0.1/32 ! -i docker0 -p tcp -m tcp --dport 55432 -j DNAT --to-destination 172.17.0.2:5432
+</span></span><span style="display:flex;"><span>-A DOCKER ! -i br-4d44c079d811 -p tcp -m tcp --dport 443 -j DNAT --to-destination 172.18.0.2:8000
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>*filter
+</span></span><span style="display:flex;"><span>-A DOCKER -d 172.18.0.2/32 ! -i br-4d44c079d811 -o br-4d44c079d811 -p tcp -m tcp --dport 8000 -j ACCEPT
+</span></span><span style="display:flex;"><span>-A DOCKER -d 172.17.0.2/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 5432 -j ACCEPT
+</span></span><span style="display:flex;"><span>-A DOCKER ! -i br-4d44c079d811 -o br-4d44c079d811 -j DROP
+</span></span><span style="display:flex;"><span>-A DOCKER ! -i docker0 -o docker0 -j DROP</span></span></code></pre></div>
+  </div><h4 id="其他网络模式说明">其他网络模式说明</h4>
+<ul>
+<li>创建自定义网桥、创建容器使用指定网桥后，虚机会自动创建 NAT 规则。</li>
+<li>若希望容器使用指定地址段（而非默认网桥的地址段），或容器 IP 直接出现在虚机的局域网中，可使用 <strong>macvlan</strong>。</li>
+<li>不使用 NAT、容器直接获取与主机一样的网络配置的方式是 <strong>MACVLAN</strong> 或 <strong>IPVLAN</strong>。</li>
+</ul>
+<h4 id="网桥与网段对照表">网桥与网段对照表</h4>
+<table>
+	<thead>
+			<tr>
+					<th>序号</th>
+					<th>网桥</th>
+					<th>网段</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>1</td>
+					<td>docker0</td>
+					<td>172.17.0.1/16</td>
+			</tr>
+			<tr>
+					<td>2</td>
+					<td>br-4d44c079d811</td>
+					<td>172.18.0.1/16</td>
+			</tr>
+	</tbody>
+</table>
+<hr>
+<blockquote>
+<p>注意：原文档的 <code>docker inspect</code> 输出中包含大量真实的数据库连接串、SFTP 凭据、API Key 等敏感环境变量，本整理稿已略去，仅保留网络相关的关键字段。</p>
+</blockquote>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

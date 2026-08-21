@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="mysqldump &#43; binlog 恢复（PITR 指定时间点恢复）
+架构图
+
+    
+      Copy
+    
+    flowchart TB
+    subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;]
+        B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;]
+        A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;]
+        C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 &#43; 7天binlog&#34;)]
+        D --&gt; E
+    end
+
+    subgraph 故障阶段[&#34;故障发生&#34;]
+        F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;]
+    end
+
+    subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;]
+        G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;]
+        G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;]
+        H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;]
+        I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)]
+    end
+
+    E --&gt; G
+    F -.触发.-&gt; G
+  摘要
+
+mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 &#43; binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery）
+前提是 MySQL 开启了 binlog（log_bin = ON），并合理配置 binlog 保留期（如 7 天）
+--master-data=2 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点
+恢复分两步：先恢复全量备份（回到备份时刻），再用 mysqlbinlog 从记录的位置回放到目标时间点
+最常见场景是&quot;恢复到误删前一分钟&quot;：通过 --stop-datetime 让误删语句（如 DELETE）不被执行
+也可以不关心 Position，直接用 --start-datetime / --stop-datetime 按时间恢复
+
+技术要点
+
+前提检查：SHOW VARIABLES LIKE &#39;log_bin&#39; 确认 binlog 已开启，SHOW MASTER STATUS 查看当前 binlog 文件和位置
+--master-data=2：在备份 SQL 文件头部写入注释形式的 CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里
+--single-transaction：InnoDB 一致性快照热备份，备份过程不锁表
+--routines --triggers --events：确保存储过程、触发器、事件一并备份
+恢复前建空库：CREATE DATABASE mydb; 后再 mysql mydb &lt; mydb_full.sql 导入
+binlog 回放起点：使用备份文件中记录的 --start-position（如 456789），可跨多个 binlog 文件依次回放
+查找误删时间：对 ROW 格式 binlog 用 mysqlbinlog --base64-output=DECODE-ROWS -v 解码查看具体 SQL 和时间戳
+精确止损：--stop-datetime 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复
+binlog 保留策略：MySQL 5.x 用 expire_logs_days=7，MySQL 8 用 binlog_expire_logs_seconds=604800（同样 7 天）
+生产脚本组合：每日 mysqldump --all-databases | gzip &gt; /backup/full_$(date &#43;%F).sql.gz &#43; binlog 保留，构成完整 PITR 体系
+
+原文内容
+mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/mysql/mysql-bin-restored/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/mysql/mysql-bin-restored/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="mysqldump &#43; binlog 恢复（PITR 指定时间点恢复） 架构图 Copyflowchart TB subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;] A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;] B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;] A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;] C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 &#43; 7天binlog&#34;)] D --&gt; E end subgraph 故障阶段[&#34;故障发生&#34;] F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;] end subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;] G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;] G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;] H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;] I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)] end E --&gt; G F -.触发.-&gt; G摘要 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 &#43; binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery） 前提是 MySQL 开启了 binlog（log_bin = ON），并合理配置 binlog 保留期（如 7 天） --master-data=2 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点 恢复分两步：先恢复全量备份（回到备份时刻），再用 mysqlbinlog 从记录的位置回放到目标时间点 最常见场景是&#34;恢复到误删前一分钟&#34;：通过 --stop-datetime 让误删语句（如 DELETE）不被执行 也可以不关心 Position，直接用 --start-datetime / --stop-datetime 按时间恢复 技术要点 前提检查：SHOW VARIABLES LIKE &#39;log_bin&#39; 确认 binlog 已开启，SHOW MASTER STATUS 查看当前 binlog 文件和位置 --master-data=2：在备份 SQL 文件头部写入注释形式的 CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里 --single-transaction：InnoDB 一致性快照热备份，备份过程不锁表 --routines --triggers --events：确保存储过程、触发器、事件一并备份 恢复前建空库：CREATE DATABASE mydb; 后再 mysql mydb &lt; mydb_full.sql 导入 binlog 回放起点：使用备份文件中记录的 --start-position（如 456789），可跨多个 binlog 文件依次回放 查找误删时间：对 ROW 格式 binlog 用 mysqlbinlog --base64-output=DECODE-ROWS -v 解码查看具体 SQL 和时间戳 精确止损：--stop-datetime 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复 binlog 保留策略：MySQL 5.x 用 expire_logs_days=7，MySQL 8 用 binlog_expire_logs_seconds=604800（同样 7 天） 生产脚本组合：每日 mysqldump --all-databases | gzip &gt; /backup/full_$(date &#43;%F).sql.gz &#43; binlog 保留，构成完整 PITR 体系 原文内容 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="mysqldump &#43; binlog 恢复（PITR 指定时间点恢复） 架构图 Copyflowchart TB subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;] A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;] B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;] A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;] C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 &#43; 7天binlog&#34;)] D --&gt; E end subgraph 故障阶段[&#34;故障发生&#34;] F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;] end subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;] G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;] G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;] H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;] I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)] end E --&gt; G F -.触发.-&gt; G摘要 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 &#43; binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery） 前提是 MySQL 开启了 binlog（log_bin = ON），并合理配置 binlog 保留期（如 7 天） --master-data=2 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点 恢复分两步：先恢复全量备份（回到备份时刻），再用 mysqlbinlog 从记录的位置回放到目标时间点 最常见场景是&#34;恢复到误删前一分钟&#34;：通过 --stop-datetime 让误删语句（如 DELETE）不被执行 也可以不关心 Position，直接用 --start-datetime / --stop-datetime 按时间恢复 技术要点 前提检查：SHOW VARIABLES LIKE &#39;log_bin&#39; 确认 binlog 已开启，SHOW MASTER STATUS 查看当前 binlog 文件和位置 --master-data=2：在备份 SQL 文件头部写入注释形式的 CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里 --single-transaction：InnoDB 一致性快照热备份，备份过程不锁表 --routines --triggers --events：确保存储过程、触发器、事件一并备份 恢复前建空库：CREATE DATABASE mydb; 后再 mysql mydb &lt; mydb_full.sql 导入 binlog 回放起点：使用备份文件中记录的 --start-position（如 456789），可跨多个 binlog 文件依次回放 查找误删时间：对 ROW 格式 binlog 用 mysqlbinlog --base64-output=DECODE-ROWS -v 解码查看具体 SQL 和时间戳 精确止损：--stop-datetime 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复 binlog 保留策略：MySQL 5.x 用 expire_logs_days=7，MySQL 8 用 binlog_expire_logs_seconds=604800（同样 7 天） 生产脚本组合：每日 mysqldump --all-databases | gzip &gt; /backup/full_$(date &#43;%F).sql.gz &#43; binlog 保留，构成完整 PITR 体系 原文内容 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：">
+	<meta itemprop="wordCount" content="536">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="mysqldump &#43; binlog 恢复（PITR 指定时间点恢复） 架构图 Copyflowchart TB subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;] A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;] B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;] A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;] C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 &#43; 7天binlog&#34;)] D --&gt; E end subgraph 故障阶段[&#34;故障发生&#34;] F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;] end subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;] G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;] G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;] H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;] I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)] end E --&gt; G F -.触发.-&gt; G摘要 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 &#43; binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery） 前提是 MySQL 开启了 binlog（log_bin = ON），并合理配置 binlog 保留期（如 7 天） --master-data=2 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点 恢复分两步：先恢复全量备份（回到备份时刻），再用 mysqlbinlog 从记录的位置回放到目标时间点 最常见场景是&#34;恢复到误删前一分钟&#34;：通过 --stop-datetime 让误删语句（如 DELETE）不被执行 也可以不关心 Position，直接用 --start-datetime / --stop-datetime 按时间恢复 技术要点 前提检查：SHOW VARIABLES LIKE &#39;log_bin&#39; 确认 binlog 已开启，SHOW MASTER STATUS 查看当前 binlog 文件和位置 --master-data=2：在备份 SQL 文件头部写入注释形式的 CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里 --single-transaction：InnoDB 一致性快照热备份，备份过程不锁表 --routines --triggers --events：确保存储过程、触发器、事件一并备份 恢复前建空库：CREATE DATABASE mydb; 后再 mysql mydb &lt; mydb_full.sql 导入 binlog 回放起点：使用备份文件中记录的 --start-position（如 456789），可跨多个 binlog 文件依次回放 查找误删时间：对 ROW 格式 binlog 用 mysqlbinlog --base64-output=DECODE-ROWS -v 解码查看具体 SQL 和时间戳 精确止损：--stop-datetime 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复 binlog 保留策略：MySQL 5.x 用 expire_logs_days=7，MySQL 8 用 binlog_expire_logs_seconds=604800（同样 7 天） 生产脚本组合：每日 mysqldump --all-databases | gzip &gt; /backup/full_$(date &#43;%F).sql.gz &#43; binlog 保留，构成完整 PITR 体系 原文内容 mysqldump &#43; binlog 是 MySQL 最经典的恢复方案：">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-bin-restored">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-mysql-bin-restored flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="mysqldump--binlog-恢复pitr-指定时间点恢复">mysqldump + binlog 恢复（PITR 指定时间点恢复）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph 备份阶段[&#34;备份阶段（正常运行）&#34;]
+        A[(MySQL 数据库&lt;br/&gt;业务持续写入)] --&gt; B[&#34;mysqldump 全量备份&lt;br/&gt;--single-transaction&lt;br/&gt;--master-data=2&#34;]
+        B --&gt; C[&#34;mydb_full.sql&lt;br/&gt;记录 binlog 位置:&lt;br/&gt;MASTER_LOG_FILE=mysql-bin.000123&lt;br/&gt;MASTER_LOG_POS=456789&#34;]
+        A --&gt; D[&#34;binlog 增量日志&lt;br/&gt;mysql-bin.000123 / 000124 ...&#34;]
+        C --&gt; E[(&#34;备份存储&lt;br/&gt;每日全量 + 7天binlog&#34;)]
+        D --&gt; E
+    end
+
+    subgraph 故障阶段[&#34;故障发生&#34;]
+        F[&#34;🕐 14:00 数据库损坏&lt;br/&gt;或误执行 DELETE&#34;]
+    end
+
+    subgraph 恢复阶段[&#34;恢复流程（PITR）&#34;]
+        G[&#34;1. 恢复全量备份&lt;br/&gt;mysql mydb &lt; mydb_full.sql&lt;br/&gt;状态回到 10:00&#34;]
+        G --&gt; H[&#34;2. 查找误操作时间点&lt;br/&gt;mysqlbinlog --base64-output&lt;br/&gt;=DECODE-ROWS -v&#34;]
+        H --&gt; I[&#34;3. 回放 binlog 增量&lt;br/&gt;--start-position=456789&lt;br/&gt;--stop-datetime=误删前一秒&#34;]
+        I --&gt; J[(&#34;✅ 恢复到指定时间点&lt;br/&gt;误删数据完好&#34;)]
+    end
+
+    E --&gt; G
+    F -.触发.-&gt; G</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>mysqldump + binlog 是 MySQL 最经典的恢复方案：全量备份恢复到某个时间点 + binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery）</li>
+<li>前提是 MySQL 开启了 binlog（<code>log_bin = ON</code>），并合理配置 binlog 保留期（如 7 天）</li>
+<li><code>--master-data=2</code> 会把备份时刻的 binlog 文件名和位置写入备份 SQL 文件的注释中，这是恢复增量的起点</li>
+<li>恢复分两步：先恢复全量备份（回到备份时刻），再用 <code>mysqlbinlog</code> 从记录的位置回放到目标时间点</li>
+<li>最常见场景是&quot;恢复到误删前一分钟&quot;：通过 <code>--stop-datetime</code> 让误删语句（如 DELETE）不被执行</li>
+<li>也可以不关心 Position，直接用 <code>--start-datetime</code> / <code>--stop-datetime</code> 按时间恢复</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>前提检查</strong>：<code>SHOW VARIABLES LIKE 'log_bin'</code> 确认 binlog 已开启，<code>SHOW MASTER STATUS</code> 查看当前 binlog 文件和位置</li>
+<li><strong><code>--master-data=2</code></strong>：在备份 SQL 文件头部写入注释形式的 <code>CHANGE MASTER TO MASTER_LOG_FILE / MASTER_LOG_POS</code>，记录备份截止的 binlog 坐标，之后的更新都在 binlog 里</li>
+<li><strong><code>--single-transaction</code></strong>：InnoDB 一致性快照热备份，备份过程不锁表</li>
+<li><strong><code>--routines --triggers --events</code></strong>：确保存储过程、触发器、事件一并备份</li>
+<li><strong>恢复前建空库</strong>：<code>CREATE DATABASE mydb;</code> 后再 <code>mysql mydb &lt; mydb_full.sql</code> 导入</li>
+<li><strong>binlog 回放起点</strong>：使用备份文件中记录的 <code>--start-position</code>（如 456789），可跨多个 binlog 文件依次回放</li>
+<li><strong>查找误删时间</strong>：对 ROW 格式 binlog 用 <code>mysqlbinlog --base64-output=DECODE-ROWS -v</code> 解码查看具体 SQL 和时间戳</li>
+<li><strong>精确止损</strong>：<code>--stop-datetime</code> 设为误删语句前一秒（如 13:55:19），使 DELETE 不被执行，13:55:19 之前的数据全部恢复</li>
+<li><strong>binlog 保留策略</strong>：MySQL 5.x 用 <code>expire_logs_days=7</code>，MySQL 8 用 <code>binlog_expire_logs_seconds=604800</code>（同样 7 天）</li>
+<li><strong>生产脚本组合</strong>：每日 <code>mysqldump --all-databases | gzip &gt; /backup/full_$(date +%F).sql.gz</code> + binlog 保留，构成完整 PITR 体系</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>mysqldump + binlog 是 MySQL 最经典的恢复方案：</p>
+<p>全量备份恢复到某个时间点 + binlog 回放增量数据 = 指定时间恢复（PITR，Point In Time Recovery）</p>
+<h2 id="一前提条件">一、前提条件</h2>
+<p>确认开启了 binlog：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>SHOW VARIABLES LIKE <span style="color:#e6db74">&#39;log_bin&#39;</span>;</span></span></code></pre></div>
+  </div><p>结果：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>+---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| log_bin       | ON    |
++---------------+-------+</code></pre>
+  </div><p>查看当前 binlog：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>SHOW MASTER STATUS;</span></span></code></pre></div>
+  </div><p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>+------------------+----------+
+| File             | Position |
++------------------+----------+
+| mysql-bin.000123 |   456789 |
++------------------+----------+</code></pre>
+  </div><h2 id="二执行全量备份">二、执行全量备份</h2>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --routines <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --triggers <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --events <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --master-data<span style="color:#f92672">=</span><span style="color:#ae81ff">2</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mydb &gt; mydb_full.sql</span></span></code></pre></div>
+  </div><p>关键参数：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>--master-data<span style="color:#f92672">=</span><span style="color:#ae81ff">2</span></span></span></code></pre></div>
+  </div><p>会把当时的 binlog 位置写入 SQL 文件。</p>
+<p>查看备份文件：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>head -30 mydb_full.sql</span></span></code></pre></div>
+  </div><p>可能看到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#75715e">-- CHANGE MASTER TO
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">-- MASTER_LOG_FILE=&#39;mysql-bin.000123&#39;,
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">-- MASTER_LOG_POS=456789;</span></span></span></code></pre></div>
+  </div><p>这非常重要。表示：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>全量备份截至：
+mysql-bin.000123
+Position=456789</code></pre>
+  </div><p>之后的更新都在 binlog 里。</p>
+<h2 id="三业务继续运行">三、业务继续运行</h2>
+<p>假设：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>10:00 做全量备份</code></pre>
+  </div><p>数据库继续产生数据：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>10:05 新订单
+10:10 修改用户
+10:15 删除记录</code></pre>
+  </div><p>这些变化全部记录在：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>mysql-bin.000123
+mysql-bin.000124
+...</code></pre>
+  </div><h2 id="四发生故障">四、发生故障</h2>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>下午14:00
+数据库损坏</code></pre>
+  </div><p>需要恢复。</p>
+<h2 id="五恢复全量备份">五、恢复全量备份</h2>
+<p>先创建空库：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>CREATE DATABASE mydb;</span></span></code></pre></div>
+  </div><p>恢复：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql mydb &lt; mydb_full.sql</span></span></code></pre></div>
+  </div><p>恢复后状态：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>恢复到10:00</code></pre>
+  </div><p>不是最新状态。</p>
+<h2 id="六回放-binlog">六、回放 binlog</h2>
+<p>查看 binlog 内容：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog mysql-bin.000123 | less</span></span></code></pre></div>
+  </div><p>或者：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog mysql-bin.000124 | less</span></span></code></pre></div>
+  </div><h3 id="从指定位置开始恢复">从指定位置开始恢复</h3>
+<p>因为备份记录了：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>MASTER_LOG_FILE=&#39;mysql-bin.000123&#39;
+MASTER_LOG_POS=456789</code></pre>
+  </div><p>所以：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --start-position<span style="color:#f92672">=</span><span style="color:#ae81ff">456789</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  /var/lib/mysql/mysql-bin.000123 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  /var/lib/mysql/mysql-bin.000124 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | mysql</span></span></code></pre></div>
+  </div><p>作用：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>恢复10:00之后的所有操作</code></pre>
+  </div><p>最终恢复到故障前状态。</p>
+<h2 id="七恢复到误删前一分钟">七、恢复到误删前一分钟</h2>
+<p>这是最常见场景。</p>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>10:00 全量备份
+13:50 正常
+13:55 误执行 DELETE
+14:00 发现事故</code></pre>
+  </div><p>恢复步骤：</p>
+<h3 id="恢复全量备份">恢复全量备份</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql mydb &lt; mydb_full.sql</span></span></code></pre></div>
+  </div><h3 id="查找误删时间">查找误删时间</h3>
+<p>查看 binlog：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --base64-output<span style="color:#f92672">=</span>DECODE-ROWS <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -v <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mysql-bin.000123</span></span></code></pre></div>
+  </div><p>找到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>2026-08-06 13:55:20
+DELETE FROM orders;</code></pre>
+  </div><h3 id="恢复到误删前">恢复到误删前</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --start-position<span style="color:#f92672">=</span><span style="color:#ae81ff">456789</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --stop-datetime<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;2026-08-06 13:55:19&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mysql-bin.000123 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | mysql</span></span></code></pre></div>
+  </div><p>这样：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>13:55:19之前的数据全部恢复
+DELETE不会执行</code></pre>
+  </div><h2 id="八按时间恢复">八、按时间恢复</h2>
+<p>不关心 Position 的情况下：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqlbinlog <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --start-datetime<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;2026-08-06 10:00:00&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --stop-datetime<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;2026-08-06 13:55:19&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mysql-bin.000123 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | mysql</span></span></code></pre></div>
+  </div><h2 id="九完整生产备份脚本">九、完整生产备份脚本</h2>
+<p>每天全量：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --single-transaction <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --routines <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --triggers <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --events <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --master-data<span style="color:#f92672">=</span><span style="color:#ae81ff">2</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --all-databases <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | gzip <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  &gt; /backup/full_<span style="color:#66d9ef">$(</span>date +%F<span style="color:#66d9ef">)</span>.sql.gz</span></span></code></pre></div>
+  </div><p>保留 binlog：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-ini" data-lang="ini"><span style="display:flex;"><span><span style="color:#66d9ef">[mysqld]</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">log-bin</span><span style="color:#f92672">=</span><span style="color:#e6db74">mysql-bin</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">expire_logs_days</span><span style="color:#f92672">=</span><span style="color:#e6db74">7</span></span></span></code></pre></div>
+  </div><p>或 MySQL 8：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-ini" data-lang="ini"><span style="display:flex;"><span><span style="color:#a6e22e">binlog_expire_logs_seconds</span><span style="color:#f92672">=</span><span style="color:#e6db74">604800</span></span></span></code></pre></div>
+  </div><p>保存 7 天。</p>
+<h2 id="十恢复流程总结">十、恢复流程总结</h2>
+<ol>
+<li>恢复 mysqldump 全量备份</li>
+<li>找到备份时记录的 <code>MASTER_LOG_FILE</code> / <code>MASTER_LOG_POS</code></li>
+<li>使用 mysqlbinlog 从该位置开始回放</li>
+<li>恢复到指定时间点</li>
+</ol>
+<p>典型命令：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysql mydb &lt; mydb_full.sql
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>mysqlbinlog <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --start-position<span style="color:#f92672">=</span><span style="color:#ae81ff">456789</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mysql-bin.000123 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  mysql-bin.000124 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  | mysql</span></span></code></pre></div>
+  </div><p>这就是 MySQL 中最经典的 Full Backup + Binlog 增量恢复（PITR）方案。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

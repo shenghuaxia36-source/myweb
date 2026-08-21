@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="虚机网段的NAT和路由模式
+架构图
+
+    
+      Copy
+    
+    flowchart TB
+    subgraph Internet[&#34;互联网 Internet&#34;]
+        NET((Internet))
+    end
+
+    subgraph FG[&#34;防火墙 FortiGate&#34;]
+        FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;]
+    end
+
+    subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;]
+        NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;]
+    end
+
+    subgraph HOST[&#34;Hyper-V Host&#34;]
+        NIC1
+        RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;]
+        NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;]
+        RT --- NAT
+    end
+
+    subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;]
+        VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;]
+    end
+
+    NET --- FGT
+    FGT --- NIC1
+
+    %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT
+    RT --&gt; NIC1
+    NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT
+    FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT
+
+    %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT
+    NAT --&gt; NIC1
+    NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT
+  摘要
+
+文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：方案二 路由转发（不使用 NAT） 与 方案三 NAT 模式。
+路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。
+NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。
+选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。
+文档还给出了 Hyper-V Host 上 Get-NetIPInterface 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。
+
+技术要点
+
+虚拟机独立网段：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。
+Hyper-V Host 双角色：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。
+路由模式回程路径：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。
+NAT 模式出站路径：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。
+NAT 模式的安全副作用：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。
+接口转发状态检查：Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。
+接口优先级（InterfaceMetric）：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。
+两种方案可用性对比：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。
+环境选型原则：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。
+
+原文内容
+下面是你提到的两种方案的拓扑图。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/route-mode-of-vm/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/route-mode-of-vm/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="虚机网段的NAT和路由模式 架构图 Copyflowchart TB subgraph Internet[&#34;互联网 Internet&#34;] NET((Internet)) end subgraph FG[&#34;防火墙 FortiGate&#34;] FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;] end subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;] NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;] end subgraph HOST[&#34;Hyper-V Host&#34;] NIC1 RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;] NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;] RT --- NAT end subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;] VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;] VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;] VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;] end NET --- FGT FGT --- NIC1 %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由 VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT RT --&gt; NIC1 NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT NAT --&gt; NIC1 NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT摘要 文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：方案二 路由转发（不使用 NAT） 与 方案三 NAT 模式。 路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。 NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。 选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。 文档还给出了 Hyper-V Host 上 Get-NetIPInterface 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。 技术要点 虚拟机独立网段：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。 Hyper-V Host 双角色：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。 路由模式回程路径：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。 NAT 模式出站路径：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。 NAT 模式的安全副作用：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。 接口转发状态检查：Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。 接口优先级（InterfaceMetric）：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。 两种方案可用性对比：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。 环境选型原则：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。 原文内容 下面是你提到的两种方案的拓扑图。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="虚机网段的NAT和路由模式 架构图 Copyflowchart TB subgraph Internet[&#34;互联网 Internet&#34;] NET((Internet)) end subgraph FG[&#34;防火墙 FortiGate&#34;] FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;] end subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;] NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;] end subgraph HOST[&#34;Hyper-V Host&#34;] NIC1 RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;] NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;] RT --- NAT end subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;] VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;] VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;] VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;] end NET --- FGT FGT --- NIC1 %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由 VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT RT --&gt; NIC1 NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT NAT --&gt; NIC1 NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT摘要 文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：方案二 路由转发（不使用 NAT） 与 方案三 NAT 模式。 路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。 NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。 选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。 文档还给出了 Hyper-V Host 上 Get-NetIPInterface 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。 技术要点 虚拟机独立网段：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。 Hyper-V Host 双角色：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。 路由模式回程路径：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。 NAT 模式出站路径：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。 NAT 模式的安全副作用：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。 接口转发状态检查：Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。 接口优先级（InterfaceMetric）：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。 两种方案可用性对比：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。 环境选型原则：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。 原文内容 下面是你提到的两种方案的拓扑图。">
+	<meta itemprop="wordCount" content="715">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="虚机网段的NAT和路由模式 架构图 Copyflowchart TB subgraph Internet[&#34;互联网 Internet&#34;] NET((Internet)) end subgraph FG[&#34;防火墙 FortiGate&#34;] FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;] end subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;] NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;] end subgraph HOST[&#34;Hyper-V Host&#34;] NIC1 RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;] NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;] RT --- NAT end subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;] VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;] VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;] VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;] end NET --- FGT FGT --- NIC1 %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由 VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT RT --&gt; NIC1 NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT NAT --&gt; NIC1 NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT摘要 文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：方案二 路由转发（不使用 NAT） 与 方案三 NAT 模式。 路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。 NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。 选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。 文档还给出了 Hyper-V Host 上 Get-NetIPInterface 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。 技术要点 虚拟机独立网段：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。 Hyper-V Host 双角色：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。 路由模式回程路径：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。 NAT 模式出站路径：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。 NAT 模式的安全副作用：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。 接口转发状态检查：Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。 接口优先级（InterfaceMetric）：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。 两种方案可用性对比：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。 环境选型原则：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。 原文内容 下面是你提到的两种方案的拓扑图。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-route-mode-of-vm">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-route-mode-of-vm flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机网段的nat和路由模式">虚机网段的NAT和路由模式</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph Internet[&#34;互联网 Internet&#34;]
+        NET((Internet))
+    end
+
+    subgraph FG[&#34;防火墙 FortiGate&#34;]
+        FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;]
+    end
+
+    subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;]
+        NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;]
+    end
+
+    subgraph HOST[&#34;Hyper-V Host&#34;]
+        NIC1
+        RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;]
+        NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;]
+        RT --- NAT
+    end
+
+    subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;]
+        VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;]
+    end
+
+    NET --- FGT
+    FGT --- NIC1
+
+    %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT
+    RT --&gt; NIC1
+    NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT
+    FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT
+
+    %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT
+    NAT --&gt; NIC1
+    NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：<strong>方案二 路由转发（不使用 NAT）</strong> 与 <strong>方案三 NAT 模式</strong>。</li>
+<li>路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。</li>
+<li>NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。</li>
+<li>选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。</li>
+<li>文档还给出了 Hyper-V Host 上 <code>Get-NetIPInterface</code> 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>虚拟机独立网段</strong>：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。</li>
+<li><strong>Hyper-V Host 双角色</strong>：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。</li>
+<li><strong>路由模式回程路径</strong>：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。</li>
+<li><strong>NAT 模式出站路径</strong>：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。</li>
+<li><strong>NAT 模式的安全副作用</strong>：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。</li>
+<li><strong>接口转发状态检查</strong>：<code>Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding</code> 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。</li>
+<li><strong>接口优先级（InterfaceMetric）</strong>：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。</li>
+<li><strong>两种方案可用性对比</strong>：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。</li>
+<li><strong>环境选型原则</strong>：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>下面是你提到的两种方案的拓扑图。</p>
+<h3 id="方案二路由转发不使用-nat">方案二：路由转发（不使用 NAT）</h3>
+<p><strong>特点：</strong></p>
+<ul>
+<li>VM 使用独立网段 172.10.0.0/24</li>
+<li>Hyper-V Host 充当三层路由器</li>
+<li>FortiGate 需要增加静态路由</li>
+<li>VM 在网络中是可见网段</li>
+</ul>
+<p><strong>拓扑图：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>                    Internet
+                        |
+                        |
+                +----------------+
+                |   FortiGate    |
+                | 192.168.10.1   |
+                +----------------+
+                        |
+                DMZ:192.168.10.0/24
+                        |
+                        |
+                +----------------+
+                | Hyper-V Host   |
+                |                |
+                | NIC1           |
+                | 192.168.10.10  |
+                |                |
+                | vEthernet      |
+                | 172.10.0.1     |
+                +----------------+
+                        |
+           Internal Virtual Switch
+                        |
+    -------------------------------------
+    |                  |               |
+    |                  |               |
++---------------+ +---------------+ +---------------+
+| VM01          | | VM02          | | VM03          |
+| 172.10.0.10   | | 172.10.0.11   | | 172.10.0.12   |
+| GW 172.10.0.1 | | GW 172.10.0.1 | | GW 172.10.0.1 |
++---------------+ +---------------+ +---------------+</code></pre>
+  </div><p><strong>FortiGate 中增加静态路由：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Destination: 172.10.0.0/24
+Next Hop:    192.168.10.10</code></pre>
+  </div><p><strong>流量路径：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>VM 172.10.0.10
+    ↓
+Hyper-V Host 172.10.0.1
+    ↓
+FortiGate 192.168.10.1
+    ↓
+Internet</code></pre>
+  </div><p><strong>回程：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Internet
+    ↓
+FortiGate
+    ↓
+静态路由: 172.10.0.0/24 -&gt; 192.168.10.10
+    ↓
+Hyper-V Host
+    ↓
+VM</code></pre>
+  </div><h3 id="方案三nat模式推荐实验环境">方案三：NAT模式（推荐实验环境）</h3>
+<p><strong>特点：</strong></p>
+<ul>
+<li>VM 使用私有网段 172.10.0.0/24</li>
+<li>Hyper-V Host 做 NAT</li>
+<li>FortiGate 无需增加静态路由</li>
+<li>配置简单</li>
+<li>外部无法主动访问 VM</li>
+</ul>
+<p><strong>拓扑图：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>                    Internet
+                        |
+                        |
+                +----------------+
+                |   FortiGate    |
+                | 192.168.10.1   |
+                +----------------+
+                        |
+                DMZ:192.168.10.0/24
+                        |
+                        |
+                +----------------+
+                | Hyper-V Host   |
+                |                |
+                | NIC1           |
+                | 192.168.10.10  |
+                |                |
+                | NAT Gateway    |
+                | 172.10.0.1     |
+                +----------------+
+                        |
+                 NAT Network
+                        |
+    -------------------------------------
+    |                  |               |
+    |                  |               |
++---------------+ +---------------+ +---------------+
+| VM01          | | VM02          | | VM03          |
+| 172.10.0.10   | | 172.10.0.11   | | 172.10.0.12   |
+| GW 172.10.0.1 | | GW 172.10.0.1 | | GW 172.10.0.1 |
++---------------+ +---------------+ +---------------+</code></pre>
+  </div><p><strong>流量路径：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>VM 172.10.0.10
+    ↓
+Host NAT 转换为 192.168.10.10
+    ↓
+FortiGate
+    ↓
+Internet</code></pre>
+  </div><p><strong>对于 Internet 来看：</strong></p>
+<p>所有 VM <code>172.10.0.x</code> 都会显示成 <code>192.168.10.10</code>。</p>
+<h3 id="两种方案对比">两种方案对比</h3>
+<table>
+	<thead>
+			<tr>
+					<th>对比项</th>
+					<th>路由模式</th>
+					<th>NAT模式</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>VM上网</td>
+					<td>√</td>
+					<td>√</td>
+			</tr>
+			<tr>
+					<td>Internet访问VM</td>
+					<td>√</td>
+					<td>×</td>
+			</tr>
+			<tr>
+					<td>需要静态路由</td>
+					<td>√</td>
+					<td>×</td>
+			</tr>
+			<tr>
+					<td>配置复杂度</td>
+					<td>较高</td>
+					<td>较低</td>
+			</tr>
+			<tr>
+					<td>企业生产环境</td>
+					<td>推荐</td>
+					<td>不推荐</td>
+			</tr>
+			<tr>
+					<td>实验环境</td>
+					<td>可用</td>
+					<td>推荐</td>
+			</tr>
+			<tr>
+					<td>VM真实IP可见</td>
+					<td>√</td>
+					<td>×</td>
+			</tr>
+	</tbody>
+</table>
+<p>对于你的 FortiGate + Hyper-V 环境，如果是正式服务器（例如 Web、SQL、应用服务器），推荐方案二（路由转发）；如果只是测试虚机、实验室环境、临时服务器，推荐方案三（Hyper-V NAT）。</p>
+<h3 id="附hyper-v-host-接口信息">附：Hyper-V Host 接口信息</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>PS C:<span style="color:#ae81ff">\U</span>sers<span style="color:#ae81ff">\a</span>uist&gt; Get-NetIPInterface
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ifIndex InterfaceAlias                  AddressFamily NlMtu<span style="color:#f92672">(</span>Bytes<span style="color:#f92672">)</span> InterfaceMetric Dhcp     ConnectionState PolicyStore
+</span></span><span style="display:flex;"><span>------- --------------                  ------------- ------------ --------------- ----     --------------- -----------
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">11</span>      vEthernet <span style="color:#f92672">(</span>Internal-vSwitch01<span style="color:#f92672">)</span>  IPv6                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">15</span> Enabled  Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">10</span>      vEthernet <span style="color:#f92672">(</span>DMZ-vSwitch01<span style="color:#f92672">)</span>       IPv6                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Enabled  Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">5</span>       vEthernet <span style="color:#f92672">(</span>External-vSwitch02<span style="color:#f92672">)</span>  IPv6                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Enabled  Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">3</span>       vEthernet <span style="color:#f92672">(</span>External-vSwitch01<span style="color:#f92672">)</span>  IPv6                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Enabled  Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">13</span>      Slot13 Port <span style="color:#ae81ff">3</span>                   IPv6                  <span style="color:#ae81ff">1500</span>               <span style="color:#ae81ff">5</span> Disabled Disconnected    ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1</span>       Loopback Pseudo-Interface <span style="color:#ae81ff">1</span>     IPv6            <span style="color:#ae81ff">4294967295</span>              <span style="color:#ae81ff">75</span> Disabled Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">11</span>      vEthernet <span style="color:#f92672">(</span>Internal-vSwitch01<span style="color:#f92672">)</span>  IPv4                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">15</span> Enabled  Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">10</span>      vEthernet <span style="color:#f92672">(</span>DMZ-vSwitch01<span style="color:#f92672">)</span>       IPv4                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Disabled Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">5</span>       vEthernet <span style="color:#f92672">(</span>External-vSwitch02<span style="color:#f92672">)</span>  IPv4                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Disabled Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">3</span>       vEthernet <span style="color:#f92672">(</span>External-vSwitch01<span style="color:#f92672">)</span>  IPv4                  <span style="color:#ae81ff">1500</span>              <span style="color:#ae81ff">25</span> Disabled Connected       ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">13</span>      Slot13 Port <span style="color:#ae81ff">3</span>                   IPv4                  <span style="color:#ae81ff">1500</span>               <span style="color:#ae81ff">5</span> Disabled Disconnected    ActiveStore
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1</span>       Loopback Pseudo-Interface <span style="color:#ae81ff">1</span>     IPv4            <span style="color:#ae81ff">4294967295</span>              <span style="color:#ae81ff">75</span> Disabled Connected       ActiveStore</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>PS C:<span style="color:#ae81ff">\U</span>sers<span style="color:#ae81ff">\a</span>uist&gt; Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ifIndex InterfaceAlias                 Forwarding
+</span></span><span style="display:flex;"><span>------- ---------------                ----------
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">11</span> vEthernet <span style="color:#f92672">(</span>Internal-vSwitch01<span style="color:#f92672">)</span>   Disabled
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">10</span> vEthernet <span style="color:#f92672">(</span>DMZ-vSwitch01<span style="color:#f92672">)</span>        Disabled
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">5</span>  vEthernet <span style="color:#f92672">(</span>External-vSwitch02<span style="color:#f92672">)</span>   Disabled
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">3</span>  vEthernet <span style="color:#f92672">(</span>External-vSwitch01<span style="color:#f92672">)</span>   Disabled
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">13</span> Slot13 Port <span style="color:#ae81ff">3</span>                    Disabled
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1</span>  Loopback Pseudo-Interface <span style="color:#ae81ff">1</span>      Disabled</span></span></code></pre></div>
+  </div><ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="水果电商订购平台设计方案（Markdown）
+架构图
+
+    
+      Copy
+    
+    graph TD
+    subgraph 方案一: Spring Boot &#43; Vue3 推荐
+        NET1[Internet]
+        NGINX1[Nginx 负载均衡]
+        VUE1A[Vue3 前端实例 A]
+        VUE1B[Vue3 前端实例 B]
+        SB1[SpringBoot 集群]
+        SB1A[SpringBoot-01]
+        SB1B[SpringBoot-02]
+        REDIS1[(Redis)]
+        MYSQL1[(MySQL)]
+        RABBIT1{{RabbitMQ}}
+        SMTP1[邮箱服务 SMTP]
+        NET1 --&gt; NGINX1
+        NGINX1 --&gt; VUE1A
+        NGINX1 --&gt; VUE1B
+        VUE1A --&gt; SB1
+        VUE1B --&gt; SB1
+        SB1 --&gt; SB1A
+        SB1 --&gt; SB1B
+        SB1A --&gt; REDIS1
+        SB1A --&gt; MYSQL1
+        SB1A --&gt; RABBIT1
+        SB1B --&gt; REDIS1
+        SB1B --&gt; MYSQL1
+        SB1B --&gt; RABBIT1
+        RABBIT1 --&gt; SMTP1
+    end
+  摘要
+
+建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。
+推荐方案一：Spring Boot 3 &#43; Vue3 &#43; MySQL &#43; Redis &#43; RabbitMQ &#43; Docker 部署，适合企业生产环境。
+方案二：React &#43; Node.js（NestJS）&#43; Kubernetes，适合快速迭代和统一 JavaScript 技术栈。
+邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。
+安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。
+容量规划：100 活跃用户、5000&#43; 商品、3000&#43; 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。
+
+技术要点
+
+方案一前端技术栈：Vue3 &#43; TypeScript &#43; Pinia &#43; Axios &#43; Element Plus &#43; Vite，企业级管理界面首选组合。
+方案一后端技术栈：Spring Boot 3 &#43; Spring Security &#43; JWT &#43; MyBatis Plus &#43; Redis &#43; MySQL，成熟的 Java 企业级方案。
+方案二前端技术栈：React18 &#43; TypeScript &#43; Redux Toolkit &#43; Ant Design &#43; Vite &#43; Axios，适合快速迭代互联网项目。
+方案二后端技术栈：Node.js &#43; NestJS &#43; Prisma &#43; JWT &#43; Redis &#43; MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。
+数据库设计：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。
+邮件验证码设计：验证码存储在 Redis 中（email:demo@qq.com → code:123456, ttl:300秒），通过 SMTP 发送，验证时从 Redis 校验。
+API 接口设计：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。
+部署方案：2 台应用服务器（4C8G）&#43; 1 台数据库服务器（8C16G）&#43; 1 台 Redis（2C4G）&#43; 1 台 Nginx（2C4G），Docker 容器化部署。
+安全防刷：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。
+订单状态流转：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。
+
+原文内容
+1. 项目概述
+建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/personalweb/%E6%B0%B4%E6%9E%9C%E7%94%B5%E5%95%86%E8%AE%A2%E8%B4%AD%E5%B9%B3%E5%8F%B0%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88markdown-1/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/personalweb/%E6%B0%B4%E6%9E%9C%E7%94%B5%E5%95%86%E8%AE%A2%E8%B4%AD%E5%B9%B3%E5%8F%B0%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88markdown-1/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="水果电商订购平台设计方案（Markdown） 架构图 Copygraph TD subgraph 方案一: Spring Boot &#43; Vue3 推荐 NET1[Internet] NGINX1[Nginx 负载均衡] VUE1A[Vue3 前端实例 A] VUE1B[Vue3 前端实例 B] SB1[SpringBoot 集群] SB1A[SpringBoot-01] SB1B[SpringBoot-02] REDIS1[(Redis)] MYSQL1[(MySQL)] RABBIT1{{RabbitMQ}} SMTP1[邮箱服务 SMTP] NET1 --&gt; NGINX1 NGINX1 --&gt; VUE1A NGINX1 --&gt; VUE1B VUE1A --&gt; SB1 VUE1B --&gt; SB1 SB1 --&gt; SB1A SB1 --&gt; SB1B SB1A --&gt; REDIS1 SB1A --&gt; MYSQL1 SB1A --&gt; RABBIT1 SB1B --&gt; REDIS1 SB1B --&gt; MYSQL1 SB1B --&gt; RABBIT1 RABBIT1 --&gt; SMTP1 end摘要 建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。 推荐方案一：Spring Boot 3 &#43; Vue3 &#43; MySQL &#43; Redis &#43; RabbitMQ &#43; Docker 部署，适合企业生产环境。 方案二：React &#43; Node.js（NestJS）&#43; Kubernetes，适合快速迭代和统一 JavaScript 技术栈。 邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。 安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。 容量规划：100 活跃用户、5000&#43; 商品、3000&#43; 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。 技术要点 方案一前端技术栈：Vue3 &#43; TypeScript &#43; Pinia &#43; Axios &#43; Element Plus &#43; Vite，企业级管理界面首选组合。 方案一后端技术栈：Spring Boot 3 &#43; Spring Security &#43; JWT &#43; MyBatis Plus &#43; Redis &#43; MySQL，成熟的 Java 企业级方案。 方案二前端技术栈：React18 &#43; TypeScript &#43; Redux Toolkit &#43; Ant Design &#43; Vite &#43; Axios，适合快速迭代互联网项目。 方案二后端技术栈：Node.js &#43; NestJS &#43; Prisma &#43; JWT &#43; Redis &#43; MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。 数据库设计：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。 邮件验证码设计：验证码存储在 Redis 中（email:demo@qq.com → code:123456, ttl:300秒），通过 SMTP 发送，验证时从 Redis 校验。 API 接口设计：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。 部署方案：2 台应用服务器（4C8G）&#43; 1 台数据库服务器（8C16G）&#43; 1 台 Redis（2C4G）&#43; 1 台 Nginx（2C4G），Docker 容器化部署。 安全防刷：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。 订单状态流转：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。 原文内容 1. 项目概述 建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="水果电商订购平台设计方案（Markdown） 架构图 Copygraph TD subgraph 方案一: Spring Boot &#43; Vue3 推荐 NET1[Internet] NGINX1[Nginx 负载均衡] VUE1A[Vue3 前端实例 A] VUE1B[Vue3 前端实例 B] SB1[SpringBoot 集群] SB1A[SpringBoot-01] SB1B[SpringBoot-02] REDIS1[(Redis)] MYSQL1[(MySQL)] RABBIT1{{RabbitMQ}} SMTP1[邮箱服务 SMTP] NET1 --&gt; NGINX1 NGINX1 --&gt; VUE1A NGINX1 --&gt; VUE1B VUE1A --&gt; SB1 VUE1B --&gt; SB1 SB1 --&gt; SB1A SB1 --&gt; SB1B SB1A --&gt; REDIS1 SB1A --&gt; MYSQL1 SB1A --&gt; RABBIT1 SB1B --&gt; REDIS1 SB1B --&gt; MYSQL1 SB1B --&gt; RABBIT1 RABBIT1 --&gt; SMTP1 end摘要 建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。 推荐方案一：Spring Boot 3 &#43; Vue3 &#43; MySQL &#43; Redis &#43; RabbitMQ &#43; Docker 部署，适合企业生产环境。 方案二：React &#43; Node.js（NestJS）&#43; Kubernetes，适合快速迭代和统一 JavaScript 技术栈。 邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。 安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。 容量规划：100 活跃用户、5000&#43; 商品、3000&#43; 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。 技术要点 方案一前端技术栈：Vue3 &#43; TypeScript &#43; Pinia &#43; Axios &#43; Element Plus &#43; Vite，企业级管理界面首选组合。 方案一后端技术栈：Spring Boot 3 &#43; Spring Security &#43; JWT &#43; MyBatis Plus &#43; Redis &#43; MySQL，成熟的 Java 企业级方案。 方案二前端技术栈：React18 &#43; TypeScript &#43; Redux Toolkit &#43; Ant Design &#43; Vite &#43; Axios，适合快速迭代互联网项目。 方案二后端技术栈：Node.js &#43; NestJS &#43; Prisma &#43; JWT &#43; Redis &#43; MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。 数据库设计：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。 邮件验证码设计：验证码存储在 Redis 中（email:demo@qq.com → code:123456, ttl:300秒），通过 SMTP 发送，验证时从 Redis 校验。 API 接口设计：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。 部署方案：2 台应用服务器（4C8G）&#43; 1 台数据库服务器（8C16G）&#43; 1 台 Redis（2C4G）&#43; 1 台 Nginx（2C4G），Docker 容器化部署。 安全防刷：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。 订单状态流转：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。 原文内容 1. 项目概述 建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。">
+	<meta itemprop="wordCount" content="839">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="水果电商订购平台设计方案（Markdown） 架构图 Copygraph TD subgraph 方案一: Spring Boot &#43; Vue3 推荐 NET1[Internet] NGINX1[Nginx 负载均衡] VUE1A[Vue3 前端实例 A] VUE1B[Vue3 前端实例 B] SB1[SpringBoot 集群] SB1A[SpringBoot-01] SB1B[SpringBoot-02] REDIS1[(Redis)] MYSQL1[(MySQL)] RABBIT1{{RabbitMQ}} SMTP1[邮箱服务 SMTP] NET1 --&gt; NGINX1 NGINX1 --&gt; VUE1A NGINX1 --&gt; VUE1B VUE1A --&gt; SB1 VUE1B --&gt; SB1 SB1 --&gt; SB1A SB1 --&gt; SB1B SB1A --&gt; REDIS1 SB1A --&gt; MYSQL1 SB1A --&gt; RABBIT1 SB1B --&gt; REDIS1 SB1B --&gt; MYSQL1 SB1B --&gt; RABBIT1 RABBIT1 --&gt; SMTP1 end摘要 建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。 推荐方案一：Spring Boot 3 &#43; Vue3 &#43; MySQL &#43; Redis &#43; RabbitMQ &#43; Docker 部署，适合企业生产环境。 方案二：React &#43; Node.js（NestJS）&#43; Kubernetes，适合快速迭代和统一 JavaScript 技术栈。 邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。 安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。 容量规划：100 活跃用户、5000&#43; 商品、3000&#43; 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。 技术要点 方案一前端技术栈：Vue3 &#43; TypeScript &#43; Pinia &#43; Axios &#43; Element Plus &#43; Vite，企业级管理界面首选组合。 方案一后端技术栈：Spring Boot 3 &#43; Spring Security &#43; JWT &#43; MyBatis Plus &#43; Redis &#43; MySQL，成熟的 Java 企业级方案。 方案二前端技术栈：React18 &#43; TypeScript &#43; Redux Toolkit &#43; Ant Design &#43; Vite &#43; Axios，适合快速迭代互联网项目。 方案二后端技术栈：Node.js &#43; NestJS &#43; Prisma &#43; JWT &#43; Redis &#43; MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。 数据库设计：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。 邮件验证码设计：验证码存储在 Redis 中（email:demo@qq.com → code:123456, ttl:300秒），通过 SMTP 发送，验证时从 Redis 校验。 API 接口设计：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。 部署方案：2 台应用服务器（4C8G）&#43; 1 台数据库服务器（8C16G）&#43; 1 台 Redis（2C4G）&#43; 1 台 Nginx（2C4G），Docker 容器化部署。 安全防刷：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。 订单状态流转：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。 原文内容 1. 项目概述 建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-水果电商订购平台设计方案（Markdown） 1">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-水果电商订购平台设计方案（Markdown） 1 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="水果电商订购平台设计方案markdown">水果电商订购平台设计方案（Markdown）</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">graph TD
+    subgraph 方案一: Spring Boot + Vue3 推荐
+        NET1[Internet]
+        NGINX1[Nginx 负载均衡]
+        VUE1A[Vue3 前端实例 A]
+        VUE1B[Vue3 前端实例 B]
+        SB1[SpringBoot 集群]
+        SB1A[SpringBoot-01]
+        SB1B[SpringBoot-02]
+        REDIS1[(Redis)]
+        MYSQL1[(MySQL)]
+        RABBIT1{{RabbitMQ}}
+        SMTP1[邮箱服务 SMTP]
+        NET1 --&gt; NGINX1
+        NGINX1 --&gt; VUE1A
+        NGINX1 --&gt; VUE1B
+        VUE1A --&gt; SB1
+        VUE1B --&gt; SB1
+        SB1 --&gt; SB1A
+        SB1 --&gt; SB1B
+        SB1A --&gt; REDIS1
+        SB1A --&gt; MYSQL1
+        SB1A --&gt; RABBIT1
+        SB1B --&gt; REDIS1
+        SB1B --&gt; MYSQL1
+        SB1B --&gt; RABBIT1
+        RABBIT1 --&gt; SMTP1
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>建设支持用户注册（邮箱验证码）、登录（JWT）、商品浏览、购物车、订单管理的水果商城系统。</li>
+<li>推荐方案一：Spring Boot 3 + Vue3 + MySQL + Redis + RabbitMQ + Docker 部署，适合企业生产环境。</li>
+<li>方案二：React + Node.js（NestJS）+ Kubernetes，适合快速迭代和统一 JavaScript 技术栈。</li>
+<li>邮件验证码流程：用户输入邮箱 → Redis 缓存验证码（TTL 300秒）→ SMTP 发送邮件 → 用户输入验证码 → Redis 校验 → 注册成功。</li>
+<li>安全设计涵盖 JWT 认证、Refresh Token、HTTPS、BCrypt/Argon2 密码加密、Redis 限流和 IP 黑名单。</li>
+<li>容量规划：100 活跃用户、5000+ 商品、3000+ 日订单，8C16G 服务器可稳定支撑 30~50 QPS 和秒级响应。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>方案一前端技术栈</strong>：Vue3 + TypeScript + Pinia + Axios + Element Plus + Vite，企业级管理界面首选组合。</li>
+<li><strong>方案一后端技术栈</strong>：Spring Boot 3 + Spring Security + JWT + MyBatis Plus + Redis + MySQL，成熟的 Java 企业级方案。</li>
+<li><strong>方案二前端技术栈</strong>：React18 + TypeScript + Redux Toolkit + Ant Design + Vite + Axios，适合快速迭代互联网项目。</li>
+<li><strong>方案二后端技术栈</strong>：Node.js + NestJS + Prisma + JWT + Redis + MySQL，前后端统一 JavaScript 技术栈，Kubernetes 部署。</li>
+<li><strong>数据库设计</strong>：四张核心表 — user（用户）、email_code（验证码，含 expire_time）、product（商品，含 price/stock/image_url）、orders（订单，含 total_amount/status）。</li>
+<li><strong>邮件验证码设计</strong>：验证码存储在 Redis 中（<code>email:demo@qq.com → code:123456, ttl:300秒</code>），通过 SMTP 发送，验证时从 Redis 校验。</li>
+<li><strong>API 接口设计</strong>：认证接口（sendCode/register/login）、商品接口（list/detail）、购物车接口（add/delete/list）、订单接口（create/list/detail）。</li>
+<li><strong>部署方案</strong>：2 台应用服务器（4C8G）+ 1 台数据库服务器（8C16G）+ 1 台 Redis（2C4G）+ 1 台 Nginx（2C4G），Docker 容器化部署。</li>
+<li><strong>安全防刷</strong>：Redis 限流、验证码频率限制、IP 黑名单三重防护机制。</li>
+<li><strong>订单状态流转</strong>：待支付 → 待发货 → 配送中 → 已完成 / 已取消，支持创建、支付、取消、查询和历史记录。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<h2 id="1-项目概述">1. 项目概述</h2>
+<p>建设一个支持用户注册、邮箱验证码验证、登录、商品浏览、购物车、订单管理的水果商城系统。</p>
+<h3 id="用户流程">用户流程</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>用户访问网站
+    │
+    ▼
+邮箱注册
+    │
+    ├──发送邮箱验证码
+    │
+    ├──验证码校验
+    │
+    └──设置密码完成注册
+    │
+    ▼
+用户登录
+    │
+    ▼
+水果商城首页
+    │
+    ├──商品浏览
+    ├──商品搜索
+    ├──购物车
+    ├──提交订单
+    └──订单查询</code></pre>
+  </div><h2 id="2-功能模块设计">2. 功能模块设计</h2>
+<h3 id="21-用户中心">2.1 用户中心</h3>
+<h4 id="注册功能">注册功能</h4>
+<p>支持：</p>
+<ul>
+<li>邮箱账号注册</li>
+<li>邮箱验证码发送</li>
+<li>验证码校验</li>
+<li>密码加密存储</li>
+<li>用户激活</li>
+</ul>
+<h4 id="登录功能">登录功能</h4>
+<p>支持：</p>
+<ul>
+<li>邮箱+密码登录</li>
+<li>JWT 认证</li>
+<li>Token 刷新</li>
+<li>自动退出</li>
+</ul>
+<h3 id="22-商品中心">2.2 商品中心</h3>
+<p>水果信息维护：苹果、香蕉、橙子、榴莲、葡萄、草莓、西瓜</p>
+<p>商品信息：</p>
+<ul>
+<li>商品名称</li>
+<li>商品图片</li>
+<li>库存</li>
+<li>价格</li>
+<li>产地</li>
+<li>规格</li>
+<li>商品描述</li>
+</ul>
+<h3 id="23-购物车">2.3 购物车</h3>
+<p>支持：</p>
+<ul>
+<li>加入购物车</li>
+<li>修改数量</li>
+<li>删除商品</li>
+<li>实时计算金额</li>
+</ul>
+<h3 id="24-订单中心">2.4 订单中心</h3>
+<p>支持：</p>
+<ul>
+<li>创建订单</li>
+<li>支付订单</li>
+<li>取消订单</li>
+<li>订单查询</li>
+<li>订单历史</li>
+</ul>
+<p>订单状态：</p>
+<ul>
+<li>待支付</li>
+<li>待发货</li>
+<li>配送中</li>
+<li>已完成</li>
+<li>已取消</li>
+</ul>
+<h2 id="3-前后端方案一推荐">3. 前后端方案一（推荐）</h2>
+<h3 id="spring-boot--vue3">Spring Boot + Vue3</h3>
+<p>适用于：</p>
+<ul>
+<li>企业生产环境</li>
+<li>中大型项目</li>
+<li>后期扩展微服务</li>
+</ul>
+<h3 id="技术栈">技术栈</h3>
+<h4 id="前端">前端</h4>
+<ul>
+<li>Vue3</li>
+<li>TypeScript</li>
+<li>Pinia</li>
+<li>Axios</li>
+<li>Element Plus</li>
+<li>Vite</li>
+</ul>
+<h4 id="后端">后端</h4>
+<ul>
+<li>Spring Boot 3</li>
+<li>Spring Security</li>
+<li>JWT</li>
+<li>MyBatis Plus</li>
+<li>Redis</li>
+<li>MySQL</li>
+</ul>
+<h4 id="中间件">中间件</h4>
+<ul>
+<li>Nginx</li>
+<li>Redis</li>
+<li>RabbitMQ</li>
+<li>MySQL</li>
+</ul>
+<h3 id="系统架构图">系统架构图</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>                    Internet
+                        │
+                        ▼
+                  Nginx负载均衡
+                        │
+            ┌───────────┴───────────┐
+            │                       │
+            ▼                       ▼
+       Vue3前端                Vue3前端
+            │
+            ▼
+       SpringBoot集群
+            │
+    ┌───────┼────────┐
+    │       │        │
+    ▼       ▼        ▼
+ Redis    MySQL   RabbitMQ
+    │
+    ▼
+邮箱服务SMTP</code></pre>
+  </div><h3 id="部署方案">部署方案</h3>
+<h4 id="服务器规格">服务器规格</h4>
+<p>支持 100 活跃用户：</p>
+<ul>
+<li>2 台应用服务器：4C8G</li>
+<li>1 台数据库服务器：8C16G</li>
+<li>1 台 Redis 服务器：2C4G</li>
+<li>1 台 Nginx 服务器：2C4G</li>
+</ul>
+<h4 id="docker-部署">Docker 部署</h4>
+<ul>
+<li>Nginx</li>
+<li>Vue3 Frontend</li>
+<li>SpringBoot-01</li>
+<li>SpringBoot-02</li>
+<li>MySQL</li>
+<li>Redis</li>
+<li>RabbitMQ</li>
+</ul>
+<h2 id="4-前后端方案二">4. 前后端方案二</h2>
+<h3 id="react--nodejs">React + Node.js</h3>
+<p>适用于：</p>
+<ul>
+<li>快速迭代</li>
+<li>互联网项目</li>
+<li>前后端统一 JavaScript 技术栈</li>
+</ul>
+<h3 id="技术栈-1">技术栈</h3>
+<h4 id="前端-1">前端</h4>
+<ul>
+<li>React18</li>
+<li>TypeScript</li>
+<li>Redux Toolkit</li>
+<li>Ant Design</li>
+<li>Vite</li>
+<li>Axios</li>
+</ul>
+<h4 id="后端-1">后端</h4>
+<ul>
+<li>Node.js</li>
+<li>NestJS</li>
+<li>Prisma</li>
+<li>JWT</li>
+<li>Redis</li>
+<li>MySQL</li>
+</ul>
+<h3 id="系统架构图-1">系统架构图</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>                   Internet
+                        │
+                        ▼
+                Kubernetes Ingress
+                        │
+           ┌────────────┼─────────────┐
+           ▼            ▼             ▼
+     React Pod1   React Pod2   React Pod3
+                        │
+                        ▼
+                   NestJS集群
+                        │
+          ┌────────┬────────┬────────┐
+          ▼        ▼        ▼
+        Redis    MySQL   SMTP邮箱服务</code></pre>
+  </div><h2 id="5-数据库设计">5. 数据库设计</h2>
+<h3 id="用户表">用户表</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">TABLE</span> <span style="color:#66d9ef">user</span> (
+</span></span><span style="display:flex;"><span>    id BIGINT <span style="color:#66d9ef">PRIMARY</span> <span style="color:#66d9ef">KEY</span>,
+</span></span><span style="display:flex;"><span>    email VARCHAR(<span style="color:#ae81ff">100</span>) <span style="color:#66d9ef">UNIQUE</span>,
+</span></span><span style="display:flex;"><span>    password VARCHAR(<span style="color:#ae81ff">255</span>),
+</span></span><span style="display:flex;"><span>    status TINYINT,
+</span></span><span style="display:flex;"><span>    create_time DATETIME
+</span></span><span style="display:flex;"><span>);</span></span></code></pre></div>
+  </div><h3 id="验证码表">验证码表</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">TABLE</span> email_code (
+</span></span><span style="display:flex;"><span>    id BIGINT <span style="color:#66d9ef">PRIMARY</span> <span style="color:#66d9ef">KEY</span>,
+</span></span><span style="display:flex;"><span>    email VARCHAR(<span style="color:#ae81ff">100</span>),
+</span></span><span style="display:flex;"><span>    code VARCHAR(<span style="color:#ae81ff">10</span>),
+</span></span><span style="display:flex;"><span>    expire_time DATETIME
+</span></span><span style="display:flex;"><span>);</span></span></code></pre></div>
+  </div><h3 id="商品表">商品表</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">TABLE</span> product (
+</span></span><span style="display:flex;"><span>    id BIGINT <span style="color:#66d9ef">PRIMARY</span> <span style="color:#66d9ef">KEY</span>,
+</span></span><span style="display:flex;"><span>    product_name VARCHAR(<span style="color:#ae81ff">100</span>),
+</span></span><span style="display:flex;"><span>    price DECIMAL(<span style="color:#ae81ff">10</span>,<span style="color:#ae81ff">2</span>),
+</span></span><span style="display:flex;"><span>    stock INT,
+</span></span><span style="display:flex;"><span>    image_url VARCHAR(<span style="color:#ae81ff">255</span>),
+</span></span><span style="display:flex;"><span>    description TEXT
+</span></span><span style="display:flex;"><span>);</span></span></code></pre></div>
+  </div><h3 id="订单表">订单表</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-sql" data-lang="sql"><span style="display:flex;"><span><span style="color:#66d9ef">CREATE</span> <span style="color:#66d9ef">TABLE</span> orders (
+</span></span><span style="display:flex;"><span>    id BIGINT <span style="color:#66d9ef">PRIMARY</span> <span style="color:#66d9ef">KEY</span>,
+</span></span><span style="display:flex;"><span>    user_id BIGINT,
+</span></span><span style="display:flex;"><span>    total_amount DECIMAL(<span style="color:#ae81ff">10</span>,<span style="color:#ae81ff">2</span>),
+</span></span><span style="display:flex;"><span>    status VARCHAR(<span style="color:#ae81ff">20</span>),
+</span></span><span style="display:flex;"><span>    create_time DATETIME
+</span></span><span style="display:flex;"><span>);</span></span></code></pre></div>
+  </div><h2 id="6-前端页面框架">6. 前端页面框架</h2>
+<h3 id="登录页面">登录页面</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>+------------------------------------------------+
+|                 Fruit Mall                     |
++------------------------------------------------+
+|                                                |
+|  邮箱地址                                      |
+|  [________________________]                    |
+|                                                |
+|  密码                                          |
+|  [________________________]                    |
+|                                                |
+|  [登录]                                        |
+|                                                |
+|  没有账号？立即注册                            |
++------------------------------------------------+</code></pre>
+  </div><h3 id="注册页面">注册页面</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>+------------------------------------------------+
+|                  用户注册                      |
++------------------------------------------------+
+| 邮箱                                           |
+| [_____________________]                        |
+|                                                |
+| 验证码                                         |
+| [______] [发送验证码]                          |
+|                                                |
+| 密码                                           |
+| [_____________________]                        |
+|                                                |
+| 确认密码                                       |
+| [_____________________]                        |
+|                                                |
+| [立即注册]                                     |
++------------------------------------------------+</code></pre>
+  </div><h3 id="商品首页">商品首页</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>+--------------------------------------------------------+
+| Logo       搜索框                    购物车(3)         |
++--------------------------------------------------------+
+| 分类菜单                                               |
++--------------------------------------------------------+
+| 苹果   香蕉   草莓   橙子   西瓜                        |
++--------------------------------------------------------+
+
++---------------+ +---------------+ +---------------+
+| 图片          | | 图片          | | 图片          |
+| 苹果          | | 香蕉          | | 草莓          |
+| ¥12.8/kg      | | ¥8.0/kg       | | ¥18.8/kg      |
+| 加入购物车     | | 加入购物车     | | 加入购物车     |
++---------------+ +---------------+ +---------------+</code></pre>
+  </div><h2 id="7-后端接口框架">7. 后端接口框架</h2>
+<h3 id="用户模块">用户模块</h3>
+<h4 id="发送验证码">发送验证码</h4>
+<p>请求：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>POST /api/auth/sendCode</code></pre>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;email&#34;</span>: <span style="color:#e6db74">&#34;demo@qq.com&#34;</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><h4 id="注册">注册</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>POST /api/auth/register</code></pre>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;email&#34;</span>: <span style="color:#e6db74">&#34;demo@qq.com&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;code&#34;</span>: <span style="color:#e6db74">&#34;123456&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;password&#34;</span>: <span style="color:#e6db74">&#34;123456&#34;</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><h4 id="登录">登录</h4>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>POST /api/auth/login</code></pre>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;email&#34;</span>: <span style="color:#e6db74">&#34;demo@qq.com&#34;</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;password&#34;</span>: <span style="color:#e6db74">&#34;123456&#34;</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><h3 id="商品接口">商品接口</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>GET /api/product/list
+GET /api/product/detail/{id}</code></pre>
+  </div><h3 id="购物车接口">购物车接口</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>POST /api/cart/add
+POST /api/cart/delete
+GET  /api/cart/list</code></pre>
+  </div><h3 id="订单接口">订单接口</h3>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>POST /api/order/create
+GET  /api/order/list
+GET  /api/order/detail/{id}</code></pre>
+  </div><h2 id="8-邮件验证码设计">8. 邮件验证码设计</h2>
+<p>流程：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>用户输入邮箱
+      │
+      ▼
+发送验证码
+      │
+      ▼
+Redis缓存验证码
+      │
+      ▼
+SMTP邮件发送
+      │
+      ▼
+用户输入验证码
+      │
+      ▼
+Redis校验
+      │
+      ▼
+注册成功</code></pre>
+  </div><p>Redis 存储：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>email:demo@qq.com
+code:123456
+ttl:300秒</code></pre>
+  </div><h2 id="9-安全设计">9. 安全设计</h2>
+<h3 id="认证">认证</h3>
+<ul>
+<li>JWT</li>
+<li>Refresh Token</li>
+<li>HTTPS</li>
+</ul>
+<h3 id="密码">密码</h3>
+<ul>
+<li>BCrypt</li>
+<li>Argon2</li>
+</ul>
+<h3 id="防刷">防刷</h3>
+<ul>
+<li>Redis 限流</li>
+<li>验证码频率限制</li>
+<li>IP 黑名单</li>
+</ul>
+<h2 id="10-100-并发活跃用户容量规划">10. 100 并发活跃用户容量规划</h2>
+<h3 id="指标">指标</h3>
+<ul>
+<li>活跃用户：100</li>
+<li>同时在线：100</li>
+<li>商品数量：5000+</li>
+<li>日订单：3000+</li>
+</ul>
+<h3 id="性能设计">性能设计</h3>
+<ul>
+<li>Nginx 负载均衡</li>
+<li>Redis 缓存热点数据</li>
+<li>MySQL 索引优化</li>
+<li>SpringBoot 双实例</li>
+<li>RabbitMQ 异步订单</li>
+<li>Docker 部署</li>
+</ul>
+<p>预计资源：</p>
+<ul>
+<li>CPU：8 核</li>
+<li>内存：16GB</li>
+<li>SSD：200GB</li>
+<li>带宽：20Mbps</li>
+</ul>
+<p>能够稳定支撑：</p>
+<ul>
+<li>100+ 活跃用户</li>
+<li>30~50 QPS</li>
+<li>订单实时处理</li>
+<li>秒级响应</li>
+</ul>
+<h2 id="最终推荐">最终推荐</h2>
+<p>生产环境优先推荐：</p>
+<ul>
+<li>前端：Vue3 + TypeScript + Element Plus</li>
+<li>后端：Spring Boot 3 + Spring Security + JWT</li>
+<li>数据库：MySQL 8</li>
+<li>缓存：Redis</li>
+<li>消息队列：RabbitMQ</li>
+<li>部署：Docker + Nginx</li>
+</ul>
+<p>该方案最适合企业级水果商城，可平滑扩展到 1000+ 活跃用户及后续微服务架构升级。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

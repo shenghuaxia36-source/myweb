@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="Application Gateway 与 Nginx 的选型与组合
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    subgraph Internet[&#34;互联网用户&#34;]
+        USER[&#34;用户访问&#34;]
+    end
+
+    subgraph Recommended[&#34;企业生产推荐架构&#34;]
+        AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;]
+        subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;]
+            NG1[&#34;Nginx1&#34;]
+            NG2[&#34;Nginx2&#34;]
+            NG3[&#34;Nginx3&#34;]
+        end
+        subgraph Apps[&#34;后端业务系统&#34;]
+            ERP[&#34;ERP&#34;]
+            CRM[&#34;CRM&#34;]
+            HR[&#34;HR&#34;]
+        end
+    end
+
+    USER --&gt;|HTTPS| AGW
+    AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3
+    NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR
+
+    subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;]
+        AKS[&#34;AKS (Kubernetes)&#34;]
+        ING[&#34;Nginx Ingress&#34;]
+        AGW2[&#34;Application Gateway&#34;]
+        AGW2 --&gt; ING --&gt; AKS
+    end
+
+    subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;]
+        NGX[&#34;单台 Nginx VM&#34;]
+        APP[&#34;Application&#34;]
+        NGX --&gt; APP
+    end
+  摘要
+
+核心结论：Application Gateway 是企业级云入口网关（云网络架构），Nginx 是应用层反向代理（应用架构），两者是协同关系而非替代关系。
+功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server &#43; Reverse Proxy &#43; Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy &#43; Load Balancer &#43; WAF），无需安装服务器。
+运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。
+WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。
+成本并非&quot;PaaS 一定便宜&quot;：小规模（如 100 用户、2 台业务服务器 &#43; 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。
+推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。
+
+技术要点
+
+架构责任模型：Nginx 架构需维护 Linux &#43; Nginx &#43; Patch &#43; Security &#43; HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。
+URL 转发能力：两者都支持。Nginx 使用 location /erp { proxy_pass http://erp01; } 这类配置；Application Gateway 通过路径规则实现 /erp/* → ERP Pool、/hr/* → HR Pool，效果一样。
+SSL 证书管理差异：Nginx 需要自己申请证书、导入 ssl_certificate / ssl_certificate_key、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。
+扩展能力对比：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。
+高可用实现差异：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。
+WAF 能力：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。
+成本决策模型：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。
+场景化方案：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。
+职责划分原则：AppGW 管&quot;云边界&quot;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&quot;应用内部&quot;（应用路由、URL 重写、Header 处理、缓存、应用代理）。
+针对 M365 &#43; 企业基础架构 &#43; Azure 混合云场景的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway &#43; Nginx Ingress 组合。
+
+原文内容
+这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/hybidcloud/application-gateway%E4%B8%8Enginx/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/hybidcloud/application-gateway%E4%B8%8Enginx/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="Application Gateway 与 Nginx 的选型与组合 架构图 Copyflowchart TD subgraph Internet[&#34;互联网用户&#34;] USER[&#34;用户访问&#34;] end subgraph Recommended[&#34;企业生产推荐架构&#34;] AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;] subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;] NG1[&#34;Nginx1&#34;] NG2[&#34;Nginx2&#34;] NG3[&#34;Nginx3&#34;] end subgraph Apps[&#34;后端业务系统&#34;] ERP[&#34;ERP&#34;] CRM[&#34;CRM&#34;] HR[&#34;HR&#34;] end end USER --&gt;|HTTPS| AGW AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3 NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;] AKS[&#34;AKS (Kubernetes)&#34;] ING[&#34;Nginx Ingress&#34;] AGW2[&#34;Application Gateway&#34;] AGW2 --&gt; ING --&gt; AKS end subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;] NGX[&#34;单台 Nginx VM&#34;] APP[&#34;Application&#34;] NGX --&gt; APP end摘要 核心结论：Application Gateway 是企业级云入口网关（云网络架构），Nginx 是应用层反向代理（应用架构），两者是协同关系而非替代关系。 功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server &#43; Reverse Proxy &#43; Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy &#43; Load Balancer &#43; WAF），无需安装服务器。 运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。 WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。 成本并非&#34;PaaS 一定便宜&#34;：小规模（如 100 用户、2 台业务服务器 &#43; 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。 推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。 技术要点 架构责任模型：Nginx 架构需维护 Linux &#43; Nginx &#43; Patch &#43; Security &#43; HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。 URL 转发能力：两者都支持。Nginx 使用 location /erp { proxy_pass http://erp01; } 这类配置；Application Gateway 通过路径规则实现 /erp/* → ERP Pool、/hr/* → HR Pool，效果一样。 SSL 证书管理差异：Nginx 需要自己申请证书、导入 ssl_certificate / ssl_certificate_key、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。 扩展能力对比：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。 高可用实现差异：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。 WAF 能力：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。 成本决策模型：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。 场景化方案：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。 职责划分原则：AppGW 管&#34;云边界&#34;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&#34;应用内部&#34;（应用路由、URL 重写、Header 处理、缓存、应用代理）。 针对 M365 &#43; 企业基础架构 &#43; Azure 混合云场景的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway &#43; Nginx Ingress 组合。 原文内容 这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="Application Gateway 与 Nginx 的选型与组合 架构图 Copyflowchart TD subgraph Internet[&#34;互联网用户&#34;] USER[&#34;用户访问&#34;] end subgraph Recommended[&#34;企业生产推荐架构&#34;] AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;] subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;] NG1[&#34;Nginx1&#34;] NG2[&#34;Nginx2&#34;] NG3[&#34;Nginx3&#34;] end subgraph Apps[&#34;后端业务系统&#34;] ERP[&#34;ERP&#34;] CRM[&#34;CRM&#34;] HR[&#34;HR&#34;] end end USER --&gt;|HTTPS| AGW AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3 NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;] AKS[&#34;AKS (Kubernetes)&#34;] ING[&#34;Nginx Ingress&#34;] AGW2[&#34;Application Gateway&#34;] AGW2 --&gt; ING --&gt; AKS end subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;] NGX[&#34;单台 Nginx VM&#34;] APP[&#34;Application&#34;] NGX --&gt; APP end摘要 核心结论：Application Gateway 是企业级云入口网关（云网络架构），Nginx 是应用层反向代理（应用架构），两者是协同关系而非替代关系。 功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server &#43; Reverse Proxy &#43; Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy &#43; Load Balancer &#43; WAF），无需安装服务器。 运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。 WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。 成本并非&#34;PaaS 一定便宜&#34;：小规模（如 100 用户、2 台业务服务器 &#43; 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。 推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。 技术要点 架构责任模型：Nginx 架构需维护 Linux &#43; Nginx &#43; Patch &#43; Security &#43; HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。 URL 转发能力：两者都支持。Nginx 使用 location /erp { proxy_pass http://erp01; } 这类配置；Application Gateway 通过路径规则实现 /erp/* → ERP Pool、/hr/* → HR Pool，效果一样。 SSL 证书管理差异：Nginx 需要自己申请证书、导入 ssl_certificate / ssl_certificate_key、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。 扩展能力对比：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。 高可用实现差异：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。 WAF 能力：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。 成本决策模型：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。 场景化方案：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。 职责划分原则：AppGW 管&#34;云边界&#34;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&#34;应用内部&#34;（应用路由、URL 重写、Header 处理、缓存、应用代理）。 针对 M365 &#43; 企业基础架构 &#43; Azure 混合云场景的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway &#43; Nginx Ingress 组合。 原文内容 这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？">
+	<meta itemprop="wordCount" content="639">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="Application Gateway 与 Nginx 的选型与组合 架构图 Copyflowchart TD subgraph Internet[&#34;互联网用户&#34;] USER[&#34;用户访问&#34;] end subgraph Recommended[&#34;企业生产推荐架构&#34;] AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;] subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;] NG1[&#34;Nginx1&#34;] NG2[&#34;Nginx2&#34;] NG3[&#34;Nginx3&#34;] end subgraph Apps[&#34;后端业务系统&#34;] ERP[&#34;ERP&#34;] CRM[&#34;CRM&#34;] HR[&#34;HR&#34;] end end USER --&gt;|HTTPS| AGW AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3 NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;] AKS[&#34;AKS (Kubernetes)&#34;] ING[&#34;Nginx Ingress&#34;] AGW2[&#34;Application Gateway&#34;] AGW2 --&gt; ING --&gt; AKS end subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;] NGX[&#34;单台 Nginx VM&#34;] APP[&#34;Application&#34;] NGX --&gt; APP end摘要 核心结论：Application Gateway 是企业级云入口网关（云网络架构），Nginx 是应用层反向代理（应用架构），两者是协同关系而非替代关系。 功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server &#43; Reverse Proxy &#43; Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy &#43; Load Balancer &#43; WAF），无需安装服务器。 运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。 WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。 成本并非&#34;PaaS 一定便宜&#34;：小规模（如 100 用户、2 台业务服务器 &#43; 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。 推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。 技术要点 架构责任模型：Nginx 架构需维护 Linux &#43; Nginx &#43; Patch &#43; Security &#43; HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。 URL 转发能力：两者都支持。Nginx 使用 location /erp { proxy_pass http://erp01; } 这类配置；Application Gateway 通过路径规则实现 /erp/* → ERP Pool、/hr/* → HR Pool，效果一样。 SSL 证书管理差异：Nginx 需要自己申请证书、导入 ssl_certificate / ssl_certificate_key、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。 扩展能力对比：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。 高可用实现差异：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。 WAF 能力：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。 成本决策模型：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。 场景化方案：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。 职责划分原则：AppGW 管&#34;云边界&#34;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&#34;应用内部&#34;（应用路由、URL 重写、Header 处理、缓存、应用代理）。 针对 M365 &#43; 企业基础架构 &#43; Azure 混合云场景的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway &#43; Nginx Ingress 组合。 原文内容 这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-application gateway与nginx">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-application gateway与nginx flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="application-gateway-与-nginx-的选型与组合">Application Gateway 与 Nginx 的选型与组合</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph Internet[&#34;互联网用户&#34;]
+        USER[&#34;用户访问&#34;]
+    end
+
+    subgraph Recommended[&#34;企业生产推荐架构&#34;]
+        AGW[&#34;Application Gateway (WAF v2)&lt;br/&gt;职责: 公网入口 / HTTPS / WAF防护&lt;br/&gt;负载均衡 / 证书管理(Key Vault)&#34;]
+        subgraph NginxLayer[&#34;Nginx Cluster (应用层反向代理)&#34;]
+            NG1[&#34;Nginx1&#34;]
+            NG2[&#34;Nginx2&#34;]
+            NG3[&#34;Nginx3&#34;]
+        end
+        subgraph Apps[&#34;后端业务系统&#34;]
+            ERP[&#34;ERP&#34;]
+            CRM[&#34;CRM&#34;]
+            HR[&#34;HR&#34;]
+        end
+    end
+
+    USER --&gt;|HTTPS| AGW
+    AGW --&gt;|应用路由| NG1 &amp; NG2 &amp; NG3
+    NG1 &amp; NG2 &amp; NG3 --&gt;|proxy_pass /erp /hr /...| ERP &amp; CRM &amp; HR
+
+    subgraph Alt1[&#34;方案二: 复杂微服务场景&#34;]
+        AKS[&#34;AKS (Kubernetes)&#34;]
+        ING[&#34;Nginx Ingress&#34;]
+        AGW2[&#34;Application Gateway&#34;]
+        AGW2 --&gt; ING --&gt; AKS
+    end
+
+    subgraph Alt2[&#34;方案三: 实验环境 (PoC/开发)&#34;]
+        NGX[&#34;单台 Nginx VM&#34;]
+        APP[&#34;Application&#34;]
+        NGX --&gt; APP
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>核心结论：Application Gateway 是企业级<strong>云入口网关</strong>（云网络架构），Nginx 是<strong>应用层反向代理</strong>（应用架构），两者是协同关系而非替代关系。</li>
+<li>功能定位不同：Nginx 是部署在 Linux VM（Ubuntu/RHEL/Rocky）上的应用层软件（Web Server + Reverse Proxy + Load Balancer）；Application Gateway 是 Azure 托管 PaaS 服务（Reverse Proxy + Load Balancer + WAF），无需安装服务器。</li>
+<li>运维责任划分：Nginx 需要自己维护 Linux 补丁、Nginx 升级、日志、证书和安全加固；Application Gateway 的系统补丁、高可用、伸缩全部由微软负责，用户只负责配置。</li>
+<li>WAF 是最大区别之一：Nginx 原生无 WAF，需额外安装 ModSecurity 或 F5 Nginx App Protect 且配置复杂；Application Gateway 直接开启 WAF v2 即可，防护 OWASP Top 10（SQL 注入、XSS、RCE 等）。</li>
+<li>成本并非&quot;PaaS 一定便宜&quot;：小规模（如 100 用户、2 台业务服务器 + 1 台 Nginx VM）每月几十澳元即可，而 Application Gateway WAF 通常几百澳元/月起；中大型企业考虑高可用、WAF、扩容、运维成本后 Application Gateway 更划算。</li>
+<li>推荐架构：Internet → Application Gateway(WAF) → Nginx Cluster → ERP/CRM/HR，AppGW 负责公网入口、HTTPS、WAF、负载均衡、证书管理，Nginx 负责应用路由、URL 重写、Header 处理、缓存、应用代理。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>架构责任模型</strong>：Nginx 架构需维护 Linux + Nginx + Patch + Security + HA；Application Gateway 架构微软负责系统补丁、高可用、伸缩，用户只负责配置。</li>
+<li><strong>URL 转发能力</strong>：两者都支持。Nginx 使用 <code>location /erp { proxy_pass http://erp01; }</code> 这类配置；Application Gateway 通过路径规则实现 <code>/erp/* → ERP Pool</code>、<code>/hr/* → HR Pool</code>，效果一样。</li>
+<li><strong>SSL 证书管理差异</strong>：Nginx 需要自己申请证书、导入 <code>ssl_certificate</code> / <code>ssl_certificate_key</code>、续期、更新配置；Application Gateway 直接上传 PFX 即可，支持从 Azure Key Vault 自动管理证书。</li>
+<li><strong>扩展能力对比</strong>：Nginx 从 1 台 VM 扩展到 10000 用户需要 Nginx Cluster（Nginx1/2/3）甚至前置负载均衡；Application Gateway 支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。</li>
+<li><strong>高可用实现差异</strong>：Nginx 单机 VM 故障即服务中断，需自行设计 Keepalived / Pacemaker / HAProxy / Cluster；Application Gateway 提供平台级 HA（Zone Redundant），单节点故障自动切换，用户无感知。</li>
+<li><strong>WAF 能力</strong>：Application Gateway WAF v2 开箱即用，防护 OWASP Top 10（SQL Injection、XSS、RCE）；Nginx 需组合 ModSecurity 或 F5 Nginx App Protect。</li>
+<li><strong>成本决策模型</strong>：小规模系统选 Nginx 更划算；Azure 原生云架构与企业生产环境选 Application Gateway 更合适；决策维度为高可用、WAF、扩容、运维成本。</li>
+<li><strong>场景化方案</strong>：方案一（推荐生产）Internet → Application Gateway WAF → Application Servers（ERP/CRM/门户网站）；方案二（复杂微服务）Internet → Application Gateway → Nginx Ingress → AKS；方案三（实验环境）Internet → Nginx → Application。</li>
+<li><strong>职责划分原则</strong>：AppGW 管&quot;云边界&quot;（公网入口、HTTPS、WAF、负载均衡、证书），Nginx 管&quot;应用内部&quot;（应用路由、URL 重写、Header 处理、缓存、应用代理）。</li>
+<li><strong>针对 M365 + 企业基础架构 + Azure 混合云场景</strong>的推荐优先级：企业生产环境 Application Gateway &gt; Nginx；应用内部转发 Nginx &gt; Application Gateway；Azure 容器平台用 Application Gateway + Nginx Ingress 组合。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这是企业架构中经常争论的问题：到底用 Azure Application Gateway 还是 Nginx Reverse Proxy？</p>
+<p>先给结论：</p>
+<ul>
+<li><strong>小规模系统</strong>：Nginx 更划算</li>
+<li><strong>Azure 原生云架构 / 企业生产环境</strong>：Application Gateway 更合适</li>
+<li>很多公司实际上是：Internet → Application Gateway(WAF) → Nginx → Application，两者并不是替代关系，而是经常组合使用。</li>
+</ul>
+<h3 id="一功能定位差异">一、功能定位差异</h3>
+<p><strong>Nginx</strong></p>
+<ul>
+<li>本质是：Web Server + Reverse Proxy + Load Balancer</li>
+<li>属于：应用层软件</li>
+<li>你需要自己安装：Linux VM（Ubuntu / RHEL / Rocky Linux）</li>
+<li>然后部署：<code>apt install nginx</code></li>
+</ul>
+<p><strong>Application Gateway</strong></p>
+<ul>
+<li>本质是：Azure 托管服务 (PaaS)，Reverse Proxy + Load Balancer + WAF</li>
+<li>属于：Azure 原生网络服务</li>
+<li>不需要安装服务器。</li>
+</ul>
+<h3 id="二架构区别">二、架构区别</h3>
+<p><strong>Nginx 架构</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Internet
+   │
+Public IP
+   │
+Linux VM
+Nginx
+   │
+Backend Servers</code></pre>
+  </div><p>需要维护：Linux、Nginx、Patch、Security、HA。</p>
+<p><strong>Application Gateway 架构</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Internet
+   │
+Public IP
+   │
+Application Gateway
+   │
+Backend Pool</code></pre>
+  </div><p>微软负责：系统补丁、高可用、伸缩；你只负责配置。</p>
+<h3 id="三url-转发能力">三、URL 转发能力</h3>
+<p>两者都支持。</p>
+<p><strong>Nginx：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-nginx" data-lang="nginx"><span style="display:flex;"><span><span style="color:#66d9ef">location</span> <span style="color:#e6db74">/erp</span> {
+</span></span><span style="display:flex;"><span>   <span style="color:#f92672">proxy_pass</span> <span style="color:#e6db74">http://erp01</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">location</span> <span style="color:#e6db74">/hr</span> {
+</span></span><span style="display:flex;"><span>   <span style="color:#f92672">proxy_pass</span> <span style="color:#e6db74">http://hr01</span>;
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><p><strong>Application Gateway：</strong></p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>/erp/* → ERP Pool
+/hr/*  → HR Pool</code></pre>
+  </div><p>结果一样。</p>
+<h3 id="四ssl-证书管理">四、SSL 证书管理</h3>
+<p><strong>Nginx</strong>：需要自己申请证书 → 导入证书（<code>ssl_certificate</code>、<code>ssl_certificate_key</code>）→ 续期证书 → 更新配置。</p>
+<p><strong>Application Gateway</strong>：直接上传 PFX 即可；支持 Azure Key Vault 自动管理证书。对于企业来说非常方便。</p>
+<h3 id="五扩展能力">五、扩展能力</h3>
+<p><strong>Nginx</strong>：假设 100 用户时一台 VM 足够；变成 10000 用户时可能需要 Nginx Cluster（Nginx1 / Nginx2 / Nginx3），例如再加前置负载均衡。</p>
+<p><strong>Application Gateway</strong>：支持自动扩展（Minimum: 2, Maximum: 20），流量增加自动扩容。</p>
+<h3 id="六高可用能力">六、高可用能力</h3>
+<p><strong>Nginx</strong>：如果 VM 故障，服务中断。需要自己设计 Keepalived / Pacemaker / HAProxy / Cluster。</p>
+<p><strong>Application Gateway</strong>：微软平台级 HA（Zone Redundant），一个节点故障自动切换，用户无感知。</p>
+<h3 id="七waf-能力最大区别之一">七、WAF 能力（最大区别之一）</h3>
+<p><strong>Nginx</strong>：原生无 WAF；需要额外安装 ModSecurity 或者 F5 Nginx App Protect，配置复杂。</p>
+<p><strong>Application Gateway</strong>：直接开启 WAF v2 即可，支持 OWASP Top 10（SQL Injection、XSS、RCE）防护。</p>
+<h3 id="八运维复杂度">八、运维复杂度</h3>
+<p><strong>Nginx</strong>：Linux 补丁、Nginx 升级、日志管理、证书维护、安全加固，全部自己负责。</p>
+<p><strong>Application Gateway</strong>：OS、HA、Scaling、Patch 由微软负责，运维成本低很多。</p>
+<h3 id="九成本比较">九、成本比较</h3>
+<p>很多人误解 PaaS 一定便宜，实际不是。</p>
+<p><strong>小企业</strong>：例如 100 用户、2 台业务服务器，部署 1 台 Nginx VM，一个月可能几十澳元即可。</p>
+<p><strong>Application Gateway WAF</strong>：通常几百澳元/月起步。</p>
+<p>所以：</p>
+<ul>
+<li>小规模：Nginx 更省钱</li>
+<li>中大型企业：考虑高可用、WAF、扩容、运维成本之后，Application Gateway 更划算</li>
+</ul>
+<h3 id="十结合你的场景">十、结合你的场景</h3>
+<p>你的环境：总部、分公司、M365、Azure、VPN Gateway、ERP、CRM、HR。</p>
+<p>推荐架构：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code>Internet
+   │
+Application Gateway (WAF)
+   │
+Nginx Cluster
+   │
+ERP / CRM / HR</code></pre>
+  </div><p>职责划分：</p>
+<p><strong>Application Gateway</strong> 负责：公网入口、HTTPS、WAF、负载均衡、证书管理。</p>
+<p><strong>Nginx</strong> 负责：应用路由、URL 重写、Header 处理、缓存、应用代理。</p>
+<h3 id="十一作为架构师怎么选">十一、作为架构师怎么选</h3>
+<p>如果你未来设计企业级 Azure 平台，建议：</p>
+<p><strong>方案一（推荐生产）</strong>：适用于 ERP、CRM、门户网站 —— Internet → Application Gateway WAF → Application Servers。</p>
+<p><strong>方案二（复杂微服务）</strong>：适用于 Kubernetes、容器平台、微服务 —— Internet → Application Gateway → Nginx Ingress → AKS。</p>
+<p><strong>方案三（实验环境）</strong>：适用于 PoC、实验、开发环境 —— Internet → Nginx → Application。</p>
+<p>对于你目前的 M365 + 企业基础架构 + Azure 混合云场景，推荐优先级是：</p>
+<table>
+	<thead>
+			<tr>
+					<th>场景</th>
+					<th>选择</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>企业生产环境</td>
+					<td>Application Gateway &gt; Nginx</td>
+			</tr>
+			<tr>
+					<td>应用内部转发</td>
+					<td>Nginx &gt; Application Gateway</td>
+			</tr>
+			<tr>
+					<td>Azure 容器平台</td>
+					<td>Application Gateway + Nginx Ingress</td>
+			</tr>
+	</tbody>
+</table>
+<p>一句话总结：Application Gateway 是企业级云入口网关，Nginx 是应用层反向代理。前者偏&quot;云网络架构&quot;，后者偏&quot;应用架构&quot;，在 Azure 企业生产环境中，两者通常是协同而不是竞争关系。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

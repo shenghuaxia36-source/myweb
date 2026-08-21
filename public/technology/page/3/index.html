@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Technology | Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="My Web">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+    
+      <link href="/myweb/technology/index.xml" rel="alternate" type="application/rss+xml" title="Gourney Of oG-Go" />
+      <link href="/myweb/technology/index.xml" rel="feed" type="application/rss+xml" title="Gourney Of oG-Go" />
+      
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Technology">
+	<meta property="og:description" content="Welcome to Technology.">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="website">
+
+	<meta itemprop="name" content="Technology">
+	<meta itemprop="description" content="Welcome to Technology.">
+	<meta itemprop="wordCount" content="3">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Technology">
+	<meta name="twitter:description" content="Welcome to Technology.">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-section is-section">
+
+  <header>
+    <div class="pb3-m pb6-l bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+      
+      <div class="tc-l pv3 ph3 ph4-ns">
+        <h1 class="f2 f-subheadline-l fw2 light-silver mb0 lh-title">
+          Technology
+        </h1>
+        
+      </div>
+    </div>
+  </header>
+
+<main class="pb7" role="main">
+  
+  
+
+  <article class="pa3 pa4-ns nested-copy-line-height">
+    <section class="cf ph3 ph5-l pv3 pv4-l f4 tc-l center measure-wide lh-copy nested-links mid-gray"><p>Welcome to Technology.</p>
+</section>
+    <section class="flex-ns mt5 flex-wrap justify-around">
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/docker-ps/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="docker-ps--oa-服务器容器清单">docker ps —— OA 服务器容器清单</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph HOST[&#34;Ubuntu 宿主机 oa-server (root)&#34;]
+        subgraph DOCKER[&#34;Docker Engine&lt;br/&gt;data-root: /data/weaver/docker&#34;]
+            subgraph BR[&#34;bridge 网络 (默认)&#34;]
+                R[&#34;redis&lt;br/&gt;redis:7.4.7&#34;]
+                M[&#34;mongodb&lt;br/&gt;e10-mongo:4.4.30&lt;br/&gt;volume: 6ced1e9d…&#34;]
+                MQ[&#34;rabbitmq&lt;br/&gt;3.10.7-management&#34;]
+                ES[&#34;elasticsearch&lt;br/&gt;v7.17.18&#34;]
+                NG[&#34;nginx (前端)&lt;br/&gt;weaver-e10-front&#34;]
+                LO[&#34;libreoffice:5.4&lt;br/&gt;0.0.0.0:8100→8100&#34;]
+                MY[&#34;mysql&lt;br/&gt;e10-mysql:v2&lt;br/&gt;0.0.0.0:3308→3308&#34;]
+            end
+        end
+        DATA[&#34;/dev/sdb1 295G&lt;br/&gt;挂载 /data&lt;br/&gt;ecology 22G + weaver 85G&lt;br/&gt;+ 安装包 tar.gz 22G&#34;]
+        DOCKER --- DATA
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>记录了一台 OA 服务器（oa-server）上 7 个长期运行的 Docker 容器：redis、mongodb、rabbitmq、elasticsearch、nginx 前端、libreoffice、mysql，均为 4 个月前创建、已持续运行 5 周。</li>
+<li>仅两个容器对外发布端口：libreoffice（0.0.0.0:8100→8100/tcp）与 mysql（0.0.0.0:3308→3308/tcp），其余容器仅在内部 bridge 网络通信。</li>
+<li>Docker 网络只有默认三件套：bridge / host / none；镜像全部来自私有仓库 reg.e-cology.cn/e10/。</li>
+<li>数据盘 /dev/sdb1（295G，已用 124G，45%）挂载在 /data，Docker 的 overlay2 存储与 Ecology OA 数据（/data/weaver 85G、/data/ecology 22G）均在该盘上。</li>
+<li><code>docker system df</code> 显示镜像共 7.937GB，其中 2.499GB（31%）可回收（未被容器使用的 google-chrome、e10-base-new 镜像）。</li>
+<li>唯一的命名卷 6ced1e9d… 被 mongodb 容器使用（<code>docker ps -a --filter volume=…</code> 可确认）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><code>docker ps</code> 列出运行中容器：CONTAINER ID / IMAGE / COMMAND / CREATED / STATUS / PORTS / NAMES。</li>
+<li><code>docker network ls</code> 查看网络：bridge（bridge 驱动）、host（host 驱动）、none（null 驱动），SCOPE 均为 local。</li>
+<li><code>docker ps -a --filter volume=&lt;卷名&gt;</code> 可反查某个卷被哪个容器使用。</li>
+<li><code>docker system df -v</code> 逐项列出镜像/容器/卷/构建缓存的空间占用，以及 SHARED SIZE / UNIQUE SIZE / CONTAINERS 关联数。</li>
+<li><code>df -h</code> 中 overlay 条目对应每个运行容器的 merged 层，实际都落在 /data/weaver/docker/overlay2/ 下。</li>
+<li><code>du -sh /data/weaver/docker</code>（14G）与 <code>docker system df</code> 的差异说明大量空间被容器数据（非镜像）占用：mysql 容器可写层即有 590MB。</li>
+<li><code>du -h --max-depth=1 /data | sort -hr</code> 用于快速定位大目录：/data/weaver 85G、/data/ecology 22G、安装包 tar.gz 22G。</li>
+<li>空间清理建议：未被任何容器使用的 reg.e-cology.cn/e10/google-chrome (2.32GB) 与 e10-base-new (843MB) 镜像可 <code>docker rmi</code> 回收约 2.5GB。</li>
+<li>mysql 端口映射 0.0.0.0:3308→3308 表示数据库对外网/局域网开放，需配合防火墙控制访问来源。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker ps
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                              COMMAND                  CREATED        STATUS       PORTS                    NAMES
+</span></span><span style="display:flex;"><span>f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            redis
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            mongodb
+</span></span><span style="display:flex;"><span>6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            rabbitmq
+</span></span><span style="display:flex;"><span>1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         <span style="color:#e6db74">&#34;/opt/bitnami/script…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            elasticsearch
+</span></span><span style="display:flex;"><span>1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   <span style="color:#e6db74">&#34;/usr/bin/supervisor…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks                            nginx
+</span></span><span style="display:flex;"><span>38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                <span style="color:#e6db74">&#34;bash&#34;</span>                   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   0.0.0.0:8100-&gt;8100/tcp   libreoffice
+</span></span><span style="display:flex;"><span>f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   <span style="color:#e6db74">&#34;/bin/sh -c &#39;/opt/my…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   0.0.0.0:3308-&gt;3308/tcp   mysql</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker network ls
+</span></span><span style="display:flex;"><span>NETWORK ID     NAME      DRIVER    SCOPE
+</span></span><span style="display:flex;"><span>feed72e799b1   bridge    bridge    local
+</span></span><span style="display:flex;"><span>26164ddfd5aa   host      host      local
+</span></span><span style="display:flex;"><span>02e59a6aa5bb   none      null      local</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# df -h
+</span></span><span style="display:flex;"><span>Filesystem                         Size  Used Avail Use% Mounted on
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G  2.3M  6.3G   1% /run
+</span></span><span style="display:flex;"><span>efivarfs                           128M   33K  128M   1% /sys/firmware/efi/efi_vars
+</span></span><span style="display:flex;"><span>/dev/mapper/ubuntu--vg-ubuntu--lv   38G   19G   18G  52% /
+</span></span><span style="display:flex;"><span>tmpfs                              32G     <span style="color:#ae81ff">0</span>   32G   0% /dev/shm
+</span></span><span style="display:flex;"><span>tmpfs                              5.0M     <span style="color:#ae81ff">0</span>  5.0M   0% /run/lock
+</span></span><span style="display:flex;"><span>/dev/sda2                          2.0G  214M  1.6G  12% /boot
+</span></span><span style="display:flex;"><span>/dev/sdb1                          295G  124G  157G  45% /data
+</span></span><span style="display:flex;"><span>/dev/sda1                          1.1G  6.2M  1.1G   1% /boot/efi
+</span></span><span style="display:flex;"><span>overlay                            295G  124G  157G  45% /data/weaver/docker/overlay2/&lt;id&gt;/merged
+</span></span><span style="display:flex;"><span>...（共 <span style="color:#ae81ff">7</span> 个 overlay 条目，对应每个运行中容器）
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G   96K  6.3G   1% /run/user/126
+</span></span><span style="display:flex;"><span>tmpfs                              6.3G  84K  6.3G   1% /run/user/1005</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker volume ls
+</span></span><span style="display:flex;"><span>DRIVER    VOLUME NAME
+</span></span><span style="display:flex;"><span>local     6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:~# docker ps -a --filter volume<span style="color:#f92672">=</span>6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                  COMMAND                  CREATED        STATUS       PORTS     NAMES
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30   <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks             mongodb</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker system df
+</span></span><span style="display:flex;"><span>TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+</span></span><span style="display:flex;"><span>Images          <span style="color:#ae81ff">9</span>         <span style="color:#ae81ff">7</span>         7.937GB   2.499GB <span style="color:#f92672">(</span>31%<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>Containers      <span style="color:#ae81ff">7</span>         <span style="color:#ae81ff">7</span>         595.7MB   0B <span style="color:#f92672">(</span>0%<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>Local Volumes   <span style="color:#ae81ff">1</span>         <span style="color:#ae81ff">1</span>         0B        0B
+</span></span><span style="display:flex;"><span>Build Cache     <span style="color:#ae81ff">0</span>         <span style="color:#ae81ff">0</span>          0B        0B</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# docker system df -v
+</span></span><span style="display:flex;"><span>Images space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>REPOSITORY                             TAG                    IMAGE ID       CREATED         SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-mongo          4.4.30                 0010f63d2695   <span style="color:#ae81ff">7</span> months ago    409.2MB   0B            409.2MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/redis              7.4.7                  07a03ad21d6a   <span style="color:#ae81ff">8</span> months ago    117MB     0B            117MB         <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/google-chrome      v79-240723             fc3f52d88821   <span style="color:#ae81ff">15</span> months ago   2.32GB    843MB         1.477GB       <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-base-new       20240702_1050-squash   7fd7a959154c   <span style="color:#ae81ff">2</span> years ago     843MB     843MB         0B            <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/e10-mysql          v2                     05f42e9517be   <span style="color:#ae81ff">2</span> years ago     983.5MB   0B            983.5MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/libreoffice        5.4                    d0d2baa78d0d   <span style="color:#ae81ff">2</span> years ago     2.826GB   376.8MB       2.449GB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/elasticsearch      v7.17.18               28cc28a7b456   <span style="color:#ae81ff">2</span> years ago     783.8MB   0B            783.8MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/weaver-e10-front   20240312_14            f45ae7ef9127   <span style="color:#ae81ff">2</span> years ago     810.4MB   376.8MB      433.6MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>reg.e-cology.cn/e10/rabbitmq           3.10.7-management      6b94498c1b2a   <span style="color:#ae81ff">3</span> years ago     261.8MB   0B            261.8MB       <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Containers space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>CONTAINER ID   IMAGE                                              COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS       NAMES
+</span></span><span style="display:flex;"><span>f898b67a04e8   reg.e-cology.cn/e10/redis:7.4.7                    <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   redis
+</span></span><span style="display:flex;"><span>61923dff4b7d   reg.e-cology.cn/e10/e10-mongo:4.4.30               <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">1</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   mongodb
+</span></span><span style="display:flex;"><span>6cfd89401b22   reg.e-cology.cn/e10/rabbitmq:3.10.7-management     <span style="color:#e6db74">&#34;docker-entrypoint.s…&#34;</span>   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   rabbitmq
+</span></span><span style="display:flex;"><span>1a8eed99569d   reg.e-cology.cn/e10/elasticsearch:v7.17.18         <span style="color:#e6db74">&#34;/opt/bitnami/script…&#34;</span>   <span style="color:#ae81ff">0</span>               6.12MB    <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   elasticsearch
+</span></span><span style="display:flex;"><span>1383f817a181   reg.e-cology.cn/e10/weaver-e10-front:20240312_14   <span style="color:#e6db74">&#34;/usr/bin/supervisor…&#34;</span>   <span style="color:#ae81ff">0</span>               66.3kB    <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   nginx
+</span></span><span style="display:flex;"><span>38f53922b596   reg.e-cology.cn/e10/libreoffice:5.4                <span style="color:#e6db74">&#34;bash&#34;</span>                   <span style="color:#ae81ff">0</span>               0B        <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   libreoffice
+</span></span><span style="display:flex;"><span>f4bc7a2ab990   reg.e-cology.cn/e10/e10-mysql:v2                   <span style="color:#e6db74">&#34;/bin/sh -c &#39;/opt/my…&#34;</span>   <span style="color:#ae81ff">0</span>               590MB     <span style="color:#ae81ff">4</span> months ago   Up <span style="color:#ae81ff">5</span> weeks   mysql
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Local Volumes space usage:
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>VOLUME NAME                                                        LINKS     SIZE
+</span></span><span style="display:flex;"><span>6ced1e9d7889bb4fc7d5b87474c906d7d5665f3a085eb0805cdb939bb85a1e7a   <span style="color:#ae81ff">1</span>         0B
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>Build cache usage: 0B</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@oa-server:~# du -sh /data/weaver/docker
+</span></span><span style="display:flex;"><span>14G     /data/weaver/docker
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:~# du -h --max-depth<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span> /data | sort -hr
+</span></span><span style="display:flex;"><span>129G    /data
+</span></span><span style="display:flex;"><span>85G     /data/weaver
+</span></span><span style="display:flex;"><span>22G     /data/ecology
+</span></span><span style="display:flex;"><span>16K     /data/lost+found
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:/data# ls -l
+</span></span><span style="display:flex;"><span>total <span style="color:#ae81ff">22828996</span>
+</span></span><span style="display:flex;"><span>drwxr-xr-x  <span style="color:#ae81ff">3</span> root root         <span style="color:#ae81ff">4096</span> Mar <span style="color:#ae81ff">13</span> 13:14 ecology
+</span></span><span style="display:flex;"><span>-rwxr-xr-x  <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">23376861578</span> Mar <span style="color:#ae81ff">27</span> 14:20 Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+</span></span><span style="display:flex;"><span>drwxr-xr-x  <span style="color:#ae81ff">2</span> chery chery       <span style="color:#ae81ff">16384</span> Nov  <span style="color:#ae81ff">7</span>  <span style="color:#ae81ff">2025</span> lost+found
+</span></span><span style="display:flex;"><span>drwxr-xr-x <span style="color:#ae81ff">18</span> root root         <span style="color:#ae81ff">4096</span> Mar <span style="color:#ae81ff">31</span> 13:00 weaver
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>root@oa-server:/data# du -sh *
+</span></span><span style="display:flex;"><span>22G     ecology
+</span></span><span style="display:flex;"><span>22G     Ecology10.0.2602.01_c02199791_forLinux_x86_64.tar.gz
+</span></span><span style="display:flex;"><span>16K     lost+found
+</span></span><span style="display:flex;"><span>85G     weaver</span></span></code></pre></div>
+  </div>
+    </div>
+    <a href="/myweb/technology/vm/vm/docker-ps/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/driver-type-of-vm/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机容器driver的形式">虚机容器DRIVER的形式</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    DOCKER[&#34;Docker 网络驱动体系&lt;br/&gt;docker network create --driver xxx&#34;]
+
+    BRIDGE[&#34;bridge 桥接&lt;br/&gt;默认驱动 ★★★★★&lt;br/&gt;单机容器互通, NAT 出网&#34;]
+    HOST[&#34;host 主机网络 ★★★★&lt;br/&gt;直接使用宿主机网络栈&lt;br/&gt;无独立IP, 性能最高&#34;]
+    NONE[&#34;none 空网络 ★★&lt;br/&gt;只有 lo, 完全隔离&#34;]
+    OVERLAY[&#34;overlay 跨主机 ★★★&lt;br/&gt;Swarm 集群, VXLAN 封装&#34;]
+    MACVLAN[&#34;macvlan ★★★★&lt;br/&gt;容器获得真实局域网IP&lt;br/&gt;像真实机器一样在交换机网络中&#34;]
+    IPVLAN[&#34;ipvlan ★★&lt;br/&gt;与 macvlan 类似但共享网卡 MAC&lt;br/&gt;不大量消耗 MAC 地址&#34;]
+
+    DOCKER --&gt; BRIDGE
+    DOCKER --&gt; HOST
+    DOCKER --&gt; NONE
+    DOCKER --&gt; OVERLAY
+    DOCKER --&gt; MACVLAN
+    DOCKER --&gt; IPVLAN
+
+    subgraph PLUGINS[&#34;第三方网络插件 (CNI)&#34;]
+        CALICO[&#34;Calico&#34;]
+        FLANNEL[&#34;Flannel&#34;]
+        WEAVE[&#34;Weave&#34;]
+        CILIUM[&#34;Cilium&#34;]
+        NSX[&#34;VMware NSX&#34;]
+    end
+    DOCKER -.-&gt;|&#34;插件机制 docker plugin ls&#34;| PLUGINS
+
+    subgraph USAGE[&#34;生产环境选型&#34;]
+        U1[&#34;单机部署 → bridge&#34;]
+        U2[&#34;需要容器真实局域网IP → macvlan&#34;]
+        U3[&#34;Docker Swarm 集群 → overlay&#34;]
+        U4[&#34;Kubernetes → Calico/Flannel/Cilium 等 CNI&#34;]
+    end
+    BRIDGE --&gt; U1
+    MACVLAN --&gt; U2
+    OVERLAY --&gt; U3
+    PLUGINS --&gt; U4
+
+    subgraph BSC[&#34;bridge 网络示意&#34;]
+        CA[&#34;Container A&#34;] --- D0[&#34;docker0&#34;] --- CB[&#34;Container B&#34;]
+        D0 --- HOSTS[&#34;Host&#34;]
+    end
+    BRIDGE --&gt; BSC
+
+    subgraph OVSC[&#34;overlay 网络示意&#34;]
+        N1[&#34;Node1 容器A&#34;] &lt;==|&#34;VXLAN 封装&#34;| N2[&#34;Node2 容器B&#34;]
+    end
+    OVERLAY --&gt; OVSC</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Docker 中 <code>docker network create --driver xxx</code> 最常见的是 bridge，但实际上支持多种 Network Driver：bridge、host、none、overlay、macvlan、ipvlan，以及通过插件机制接入的第三方驱动。</li>
+<li>查看当前 Docker 支持的驱动：<code>docker info</code> 或 <code>docker network ls</code>，常见输出包含 bridge/host/none（null）/ingress（overlay）。</li>
+<li><strong>bridge</strong>（默认）：单机内使用、容器间互通、通过 NAT 与外部通信，适用于 Web 服务、数据库、中间件。</li>
+<li><strong>host</strong>：容器直接使用宿主机网络栈，没有独立 IP、不需要端口映射、性能最高（<code>docker run --network host nginx</code> 等同于在宿主机直接监听 Host:80）。</li>
+<li><strong>macvlan</strong>：容器获得真实局域网 IP（如 192.168.1.100），与 192.168.1.101 一样像真实机器存在于交换机网络中；<strong>ipvlan</strong> 与之类似但共享网卡 MAC，不大量消耗 MAC 地址，适合大规模部署。</li>
+<li>生产环境最常见选择：单机部署 → bridge；需要容器使用真实局域网 IP → macvlan；Docker Swarm 集群 → overlay；Kubernetes 通常不直接使用这些驱动，而是通过 Calico、Flannel、Cilium 等 CNI 网络插件实现。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>驱动查看命令</strong>：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker info
+</span></span><span style="display:flex;"><span>docker network ls</span></span></code></pre></div>
+  </div>常见输出：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>NETWORK ID     NAME      DRIVER
+</span></span><span style="display:flex;"><span>xxxx           bridge    bridge
+</span></span><span style="display:flex;"><span>xxxx           host      host
+</span></span><span style="display:flex;"><span>xxxx           none      null
+</span></span><span style="display:flex;"><span>xxxx           ingress   overlay</span></span></code></pre></div>
+  </div></li>
+<li><strong>bridge 创建与特点</strong>：<code>docker network create --driver bridge my-net</code>；默认驱动，单机容器挂在 docker0（或 br-xxx）下互通，出网靠 NAT，最常用。</li>
+<li><strong>host 驱动</strong>：<code>docker run --network host nginx</code> 直接监听 <code>Host:80</code>，没有独立 IP、无端口映射开销，性能最高；适合高性能场景、网络转发、监控组件。</li>
+<li><strong>none 驱动</strong>：<code>docker run --network none nginx</code> 后容器没有网卡（除了 lo），完全隔离；用 <code>docker exec -it nginx ip addr</code> 只能看到 lo；适合安全隔离和特殊网络配置。</li>
+<li><strong>overlay 驱动</strong>：Swarm 集群专用，多节点通信基于 VXLAN 封装（<code>Node1 容器A &lt;----VXLAN----&gt; Node2 容器B</code>），创建命令：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver overlay <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  my-overlay</span></span></code></pre></div>
+  </div></li>
+<li><strong>macvlan 创建示例</strong>：容器直接使用物理网络、获得真实局域网 IP：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d macvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --gateway<span style="color:#f92672">=</span>192.168.1.1 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  macvlan-net
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>docker run -it --network macvlan-net alpine</span></span></code></pre></div>
+  </div>容器可能获得 <code>192.168.1.100</code>，与 <code>192.168.1.101</code> 像真实机器一样存在于交换机网络中；适用于网络设备模拟、需要真实 IP 的服务、广播/组播场景。</li>
+<li><strong>ipvlan 创建示例</strong>：与 macvlan 类似但共享父网卡 MAC，不大量消耗 MAC 地址，大规模部署更友好，适用于数据中心、云环境：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create -d ipvlan <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --subnet<span style="color:#f92672">=</span>192.168.1.0/24 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -o parent<span style="color:#f92672">=</span>eth0 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  ipvlan-net</span></span></code></pre></div>
+  </div></li>
+<li><strong>第三方驱动插件机制</strong>：<code>docker plugin ls</code> 查看已装插件，常见插件有 Calico、Flannel、Weave、Cilium、VMware NSX；例如：
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker network create <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --driver calico <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  calico-net</span></span></code></pre></div>
+  </div></li>
+<li><strong>使用频率对照表</strong>：
+<table>
+	<thead>
+			<tr>
+					<th>Driver</th>
+					<th>使用频率</th>
+					<th>场景</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>bridge</td>
+					<td>★★★★★</td>
+					<td>单机容器</td>
+			</tr>
+			<tr>
+					<td>host</td>
+					<td>★★★★</td>
+					<td>高性能应用</td>
+			</tr>
+			<tr>
+					<td>macvlan</td>
+					<td>★★★★</td>
+					<td>容器直连物理网络</td>
+			</tr>
+			<tr>
+					<td>overlay</td>
+					<td>★★★</td>
+					<td>Swarm 集群</td>
+			</tr>
+			<tr>
+					<td>ipvlan</td>
+					<td>★★</td>
+					<td>大规模网络</td>
+			</tr>
+			<tr>
+					<td>none</td>
+					<td>★★</td>
+					<td>隔离环境</td>
+			</tr>
+	</tbody>
+</table>
+</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>在 Docker 中，<code>docker network create --driver xxx</code> 最常见的是 bridge，但实际上支持多种 Network Driver。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/driver-type-of-vm/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/hyper-v-3modes-for-vm/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="hyper-v-的三种虚机网络模式">Hyper-V 的三种虚机网络模式</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    INET((&#34;Internet&#34;))
+
+    subgraph FG[&#34;FortiGate 网关 192.168.10.1&#34;]
+        DMZ[&#34;DMZ 网段: 192.168.10.0/24&#34;]
+    end
+
+    subgraph HV[&#34;Hyper-V Host (NIC1: 192.168.10.10)&#34;]
+        EXT[&#34;方案1 External Switch&lt;br/&gt;vSwitch-DMZ (桥接物理网卡)&lt;br/&gt;VM 直接使用 192.168.10.X&#34;]
+        INT[&#34;方案2/3 Internal Switch&lt;br/&gt;vSwitch-LAN&lt;br/&gt;vEthernet: 172.10.0.1/24&#34;]
+        NAT[&#34;方案3 NetNat&lt;br/&gt;HyperV-NAT&lt;br/&gt;172.10.0.0/24&#34;]
+        INT --&gt; NAT
+    end
+
+    INET --- DMZ --- HV
+
+    subgraph VMS[&#34;虚拟机&#34;]
+        VM1[&#34;方案1 VM&lt;br/&gt;192.168.10.20&lt;br/&gt;GW 192.168.10.1&#34;]
+        VM2[&#34;方案2 VM&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1 (Host 路由转发)&#34;]
+        VM3[&#34;方案3 VM&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1 (Host NAT)&#34;]
+    end
+
+    EXT --- VM1
+    INT --- VM2
+    INT --- VM3</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Hyper-V 三种常见网络模式：桥接（External）、内部网络（Internal）、NAT 网络；前提假设物理网卡（DMZ）在 192.168.10.0/24 网段，Host 为 192.168.10.10。</li>
+<li>方案1（External）：虚机直接使用 192.168.10.X，与 Host 同网段直接通信，配置最简单。</li>
+<li>方案2（Internal + 路由转发）：虚机使用 172.10.0.X，通过 Host 开启 IP Forwarding（或 RRAS）三层路由上网，但上级路由器（如 FortiGate）必须增加静态路由 172.10.0.0/24 → 192.168.10.10。</li>
+<li>方案3（Internal + NAT，实验环境最常用）：<code>New-NetNat</code> 创建 NAT，虚机经 Host NAT 上网，无需在 FortiGate 加路由，配置简单但外部无法主动访问 VM。</li>
+<li>是否必须 NAT？不必须——有 FortiGate 时可开启 Host 路由 + FortiGate 静态路由 + FortiGate Policy 放行，即 Layer 3 Routing 方式，VM 真实 IP 对网络可见。</li>
+<li>推荐原则：实验室/测试环境/少量 VM 用 Hyper-V NAT（配置简单）；企业环境/FortiGate 已管理所有网络用路由模式（双向访问、可审计、管理规范）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>创建 External Switch：Virtual Switch Manager → New Virtual Network Switch → External，绑定 DMZ 物理网卡，命名 vSwitch-DMZ，勾选 &ldquo;Allow management OS to share this network adapter&rdquo;。</li>
+<li>External 模式虚机 IP 配置：192.168.10.20 / 255.255.255.0 / GW 192.168.10.1，与 Host (192.168.10.10) 同网段直接互通。</li>
+<li>创建 Internal Switch：Virtual Switch Manager → Internal，命名 vSwitch-LAN；创建后 Host 出现虚拟网卡 vEthernet(vSwitch-LAN)，配置 IP 172.10.0.1 / 255.255.255.0。</li>
+<li>Internal 模式虚机配置：IP 172.10.0.10 / Mask 255.255.255.0 / GW 172.10.0.1 / DNS 8.8.8.8。</li>
+<li>开启 Host 路由转发：<code>Set-NetIPInterface -Forwarding Enabled</code>，或启用 RRAS；配合 FortiGate 静态路由 172.10.0.0/24 via 192.168.10.10。</li>
+<li>创建 NAT（PowerShell）：<code>New-NetNat -Name HyperV-NAT -InternalIPInterfaceAddressPrefix 172.10.0.0/24</code>，用 <code>Get-NetNat</code> 验证。</li>
+<li>NAT 模式流量路径：VM → Host NAT（转换为 192.168.10.10）→ 192.168.10.1 网关 → Internet。</li>
+<li>路由模式（Layer 3 Routing）流量路径：VM 172.10.0.10 → vSwitch-LAN 172.10.0.1 → Hyper-V Host 192.168.10.10 → Internet；回程依赖 FortiGate 静态路由。</li>
+<li>选型判断：192.168.10.X 与 172.10.0.X 之间需要双向访问、审计和控制时选择路由模式；仅虚机上网需求选 NAT。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这是 Hyper-V 很常见的三种网络模式：桥接(External)、内部网络(Internal)、NAT 网络。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/hyper-v-3modes-for-vm/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/ip-plan-of-vm-and-container/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机-容器的地址规划">虚机-容器的地址规划</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph HyperV[Hyper-V]
+        subgraph UbuntuVM[Ubuntu VM 10.10.10.22 eth0]
+            D0[docker0 网关 172.17.0.1/16&lt;br/&gt;默认 bridge 网络]
+            BR[br-4d44c079d811 网关 172.18.0.1/16&lt;br/&gt;自定义网络 app-net]
+            D0 --&gt;|veth34a5eca| CA[Container-A PostgreSQL&lt;br/&gt;172.17.0.2 端口 5432]
+            BR --&gt;|veth61d83e0| CB[Container-B Web 应用&lt;br/&gt;172.18.0.2 端口 8000]
+        end
+    end
+    PC[PC 10.10.10.100] -- https://10.10.10.22 --&gt; UbuntuVM
+    IN((公网 110.110.110.10)) -- FortiGate VIP --&gt; PC2[10.10.10.22:443] -.-&gt; UbuntuVM
+    subgraph 端口映射_DNAT
+        M1[127.0.0.1:55432 → 172.17.0.2:5432&lt;br/&gt;仅本机访问]
+        M2[10.10.10.22:443 → 172.18.0.2:8000&lt;br/&gt;全网可访问]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>通过 <code>ip addr</code> 与 <code>iptables -t nat</code> 输出可还原完整网络结构：Ubuntu VM（10.10.10.22，Hyper-V 之上）运行 Docker，包含默认网络 docker0（172.17.0.1/16）与自定义网络 br-4d44c079d811（172.18.0.1/16）。</li>
+<li>docker0 是 Docker 自动创建的默认 Bridge；br-4d44c079d811 由 <code>docker network create app-net</code>（或 docker compose）产生，网络 ID 前缀 4d44c079d811 即 Linux 网桥名。</li>
+<li>veth 设备标识容器挂载位置：veth34a5eca master docker0 对应 Container A（172.17.0.2），veth61d83e0 master br-4d44c079d811 对应 Container B（172.18.0.2）。</li>
+<li>端口映射：PostgreSQL <code>127.0.0.1:55432 → 172.17.0.2:5432</code>（仅本机可访问）；Web <code>443 → 172.18.0.2:8000</code>（10.10.10.22:443 可被局域网访问）。</li>
+<li>完整访问路径（PC → 容器）：10.10.10.100 → Linux VM 10.10.10.22:443 → Docker DNAT → 172.18.0.2:8000；若 FortiGate 做公网 VIP（110.110.110.10:443 → 10.10.10.22:443），则形成 FortiGate（第一层 NAT）+ Docker（第二层 NAT）的双层地址转换架构。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>组件识别</strong>：eth0 10.10.10.22/24 说明 Linux VM 在 10.10.10.0/24 网络中，处于 <code>Hyper-V → Linux VM (10.10.10.22)</code> 结构。</li>
+<li><strong>默认 Docker 网络</strong>：docker0 网关 172.17.0.1/16，网段 172.17.0.0/16，未指定网络的容器默认挂载（172.17.0.2、172.17.0.3&hellip;）。</li>
+<li><strong>自定义网络</strong>：<code>docker network create app-net</code> 生成 br-4d44c079d811（172.18.0.1/16），网段 172.18.0.0/16；网桥名 br-&lt;网络ID前12位&gt;。</li>
+<li><strong>veth 判断容器归属</strong>：<code>veth34a5eca@if2 master docker0</code> → Container A 挂 docker0；<code>veth61d83e0@if2 master br-4d44c079d811</code> → Container B 挂自定义网桥。</li>
+<li><strong>iptables 确认端口映射</strong>：<code>55432 → 172.17.0.2:5432</code> 与 <code>443 → 172.18.0.2:8000</code> 的 DNAT 规则可反推容器 IP：Container-A=172.17.0.2、Container-B=172.18.0.2。</li>
+<li><strong>PostgreSQL 访问方式</strong>：绑定 127.0.0.1，只能本机 <code>psql -h localhost -p 55432</code> 访问；外部机器（10.10.10.22:55432）不能访问，因为有 PREROUTING 阶段对 <code>-d 127.0.0.1 --dport 55432</code> 的 DROP 规则。</li>
+<li><strong>Web 容器访问路径</strong>：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000，实际服务是 Container-B。</li>
+<li><strong>双层 NAT 架构</strong>：公网 110.110.110.10:443 →（FortiGate VIP）→ 10.10.10.22:443 →（Docker DNAT）→ 172.18.0.2:8000；第一层 NAT 在 FortiGate，第二层 NAT 在 Docker。</li>
+<li><strong>容器对应关系确认命令</strong>：<code>docker ps</code> + <code>docker inspect &lt;容器ID&gt;</code>；或批量 <code>docker container ls -q | xargs docker inspect --format '{{.Name}} {{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}'</code> 直接得到 <code>/postgres 172.17.0.2</code>、<code>/webapp 172.18.0.2</code>。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>从这个 ip addr 和前面贴出的 iptables -t nat 输出，我基本可以还原出你的网络结构。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/ip-plan-of-vm-and-container/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/iptables-of-container-vs-ufw/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="容器-iptables-与-ufw-的关系">容器 iptables 与 UFW 的关系</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;]
+
+    subgraph IPT[&#34;iptables 数据流&#34;]
+        PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;]
+        DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;]
+        FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;]
+        INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;]
+    end
+
+    VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;]
+    INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;]
+    DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。</li>
+<li>环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。</li>
+<li>原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 <code>ufw deny 443</code> 拦不住 <code>docker run -p 443:8000</code> 发布的端口。</li>
+<li>Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。</li>
+<li>Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。</li>
+<li>备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 <code>&quot;iptables&quot;: false</code> 后自行管理规则），但配置复杂。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。</li>
+<li>典型踩坑：<code>ufw status</code> 显示 443 DENY，但 <code>docker run -p 443:8000</code> 后外部仍能访问——Docker 插入规则优先于 UFW。</li>
+<li>查看 Docker 创建的 NAT 规则：<code>iptables -t nat -L -n -v</code>，可看到 <code>DNAT tcp dpt:443 to:172.18.0.2:8000</code>。</li>
+<li>查看 FORWARD 链：<code>iptables -L FORWARD -n -v</code>，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。</li>
+<li>查看 DOCKER-USER 链默认内容：<code>iptables -L DOCKER-USER -n -v</code>，通常只有 <code>Chain DOCKER-USER / RETURN all</code>（即默认放行）。</li>
+<li>禁止外部访问容器 443：不要只依赖 UFW，用 <code>iptables -I DOCKER-USER -p tcp --dport 443 -j DROP</code> 在 Docker 转发前拦截。</li>
+<li>企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 <code>{&quot;iptables&quot;: false}</code> 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。</li>
+<li>企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 <code>iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT</code> + <code>iptables -A DOCKER-USER -j DROP</code>。</li>
+<li>快速验证三段命令：<code>sudo iptables -L DOCKER-USER -n -v</code>、<code>sudo iptables -L FORWARD -n -v</code>、<code>sudo iptables -t nat -L DOCKER -n -v</code>，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/iptables-of-container-vs-ufw/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/iptables-of-vm/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机中的-iptables">虚机中的 IPTABLES</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;]
+    VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;]
+    VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;]
+    D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;]
+    BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;]
+
+    EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;]
+    DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB
+    LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG
+    PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) + br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。</li>
+<li>PostgreSQL 端口映射 <code>127.0.0.1:55432 → 172.17.0.2:5432</code> 只能本机访问：raw 表 <code>-A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP</code> 专门拦截外部尝试访问 10.10.10.22:55432。</li>
+<li>Web 容器 <code>10.10.10.22:443 → 172.18.0.2:8000</code>（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。</li>
+<li>容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。</li>
+<li>容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 <code>-A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT</code> 和 <code>-i docker0 -j ACCEPT</code>，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。</li>
+<li>UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。</li>
+<li>值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>由 <code>-A DOCKER -d 172.17.0.2/32</code> 可确定 docker0 下有一个容器（172.17.0.2）；由 <code>-A DOCKER -d 172.18.0.2/32</code> 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。</li>
+<li>PostgreSQL 端口映射实为 <code>docker run -p 127.0.0.1:55432:5432</code>；访问方式仅限本机 <code>psql -h localhost -p 55432</code>，外部机器不能访问 10.10.10.22:55432。</li>
+<li>Web 容器端口映射等价 <code>docker run -p 443:8000</code>；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。</li>
+<li>容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。</li>
+<li>当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。</li>
+<li>FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。</li>
+<li>若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。</li>
+<li>容器互通验证方法：<code>docker exec -it 容器 bash</code> 后分别 <code>ping 172.18.0.2</code> 与 <code>ping 172.17.0.2</code>。</li>
+<li>raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/iptables-of-vm/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/linux-mount-vm/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="linux-创建分区挂载数据盘">Linux 创建分区挂载数据盘</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;]
+        P[&#34;分区 /dev/sdb1&#34;]
+        FS[&#34;文件系统 ext4 (或 xfs)&#34;]
+        P --- FS
+    end
+    MKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;]
+    FS --&gt; MOUNT
+    MOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;]
+    FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;]
+    BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li><code>/dev/sdb1 463G /data</code> 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM + /boot + EFI 分区）分开。</li>
+<li>标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。</li>
+<li>用 <code>lsblk -f</code> 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。</li>
+<li>用 <code>blkid /dev/sdb1</code> 获取分区 UUID，与 <code>cat /etc/fstab</code> 中的条目对应，即可确认挂载由谁创建。</li>
+<li>463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>查看磁盘与分区结构：<code>lsblk -f</code> 可同时看到设备、文件系统类型和挂载点；<code>fdisk -l</code> 查看磁盘容量（Disk /dev/sdb: 500 GiB）。</li>
+<li>fdisk 创建分区操作序列：<code>n</code>（新建分区）→ <code>p</code>（主分区）→ <code>1</code>（分区号 1）→ <code>w</code>（写入），生成 /dev/sdb1。</li>
+<li>格式化文件系统：<code>mkfs.ext4 /dev/sdb1</code>（或 <code>mkfs.xfs /dev/sdb1</code>，CentOS/RHEL 常用 xfs）。</li>
+<li>手动挂载：<code>mkdir /data</code> 后 <code>mount /dev/sdb1 /data</code>，用 <code>df -h</code> 验证出现 <code>/dev/sdb1 463G ... /data</code>。</li>
+<li>开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 <code>UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2</code>（也可用设备路径 <code>/dev/sdb1 /data ext4 defaults 0 2</code>）。</li>
+<li>修改 fstab 后务必执行 <code>mount -a</code> 测试无报错，避免重启后因配置错误进入紧急模式。</li>
+<li>确认挂载来源：<code>cat /etc/fstab</code> 查看 UUID 条目，<code>blkid /dev/sdb1</code> 查看实际 UUID，两者对应即知该挂载的创建方式。</li>
+<li>容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。</li>
+<li><code>lsblk -f</code> + <code>cat /etc/fstab</code> 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>你这个 /data 挂载（<code>/dev/sdb1 /data 463G</code>）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/linux-mount-vm/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/mysql-backup/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="mysql-备份">MySQL 备份</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    subgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;]
+        SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;]
+        DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;]
+        CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;]
+        SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;+ override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;]
+        CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;]
+        CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;]
+    end
+    DATA --- CONF --- SYSTEMD</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。</li>
+<li>InnoDB 生产环境推荐：<code>mysqldump --single-transaction --routines --triggers --events</code>，实现不锁表热备并包含存储过程、触发器和事件。</li>
+<li>定时备份示例：crontab 每天 2 点执行 mysqldump + gzip 压缩，落盘 /data/backup/。</li>
+<li>几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。</li>
+<li>实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 <code>--skip-grant-tables --skip-networking</code> 启动（密码恢复用途，属临时状态）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>备份单库：<code>mysqldump -u root -p mydb &gt; mydb.sql</code>；多库加 <code>--databases db1 db2 db3</code>；全库加 <code>--all-databases</code>。</li>
+<li>备份并压缩（推荐）：<code>mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz</code>；恢复用 <code>gunzip &lt; mydb.sql.gz | mysql -u root -p mydb</code>。</li>
+<li>仅表结构 <code>--no-data</code>；仅数据 <code>--no-create-info</code>；单表 <code>mysqldump -u root -p mydb users &gt; users.sql</code>。</li>
+<li>InnoDB 热备参数：<code>--single-transaction</code>（热备份不锁表）、<code>--routines</code>（存储过程）、<code>--triggers</code>（触发器）、<code>--events</code>（事件）。</li>
+<li>查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length+index_length。</li>
+<li>恢复流程：先 <code>CREATE DATABASE mydb;</code> 再 <code>mysql -u root -p mydb &lt; mydb.sql</code>。</li>
+<li>定时备份 crontab：<code>0 2 * * * mysqldump -u root -p'Password' --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date +\%F).sql.gz</code>。</li>
+<li>MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump &ndash;single-transaction。</li>
+<li><code>systemctl cat mysql</code> 可查看 systemd 单元及 override 片段；<code>systemctl show -p FragmentPath mysql</code> 定位主配置文件路径。</li>
+<li>当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 <code>mysqld --skip-grant-tables --skip-networking</code>，属于跳过授权表的维护模式，事后应移除。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>MySQL 常用备份命令如下。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/mysql-backup/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/overlay-vxlan/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="容器跨平台通讯的-overlay-架构vxlan">容器跨平台通讯的 OVERLAY 架构——VXLAN</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    INET((&#34;Internet&#34;)) --- GW[&#34;网关 10.10.1.1 / Switch 10.10.1.0/24 (Underlay 管理网络)&#34;]
+
+    subgraph N1[&#34;Node1 (CentOS, swarm-manager, 10.10.1.11)&#34;]
+        VTEP1[&#34;VTEP&lt;br/&gt;封包/解包&#34;]
+        CA[&#34;ContainerA / Web-01&lt;br/&gt;10.0.0.11 (app-overlay)&#34;]
+        CA --- VTEP1
+    end
+
+    subgraph N2[&#34;Node2 (Ubuntu, swarm-worker, 10.10.1.12)&#34;]
+        VTEP2[&#34;VTEP&lt;br/&gt;解包/封包&#34;]
+        CB[&#34;ContainerB / Web-02&lt;br/&gt;10.0.0.12 (app-overlay)&#34;]
+        CB --- VTEP2
+    end
+
+    GW --- N1
+    GW --- N2
+    VTEP1 &lt;--&gt;|&#34;VXLAN 隧道&lt;br/&gt;UDP 4789 (VNI)&lt;br/&gt;外层 IP: 10.10.1.11 ↔ 10.10.1.12&#34;| VTEP2
+
+    subgraph SWARM[&#34;Docker Swarm 集群&#34;]
+        MGR[&#34;Manager: 2377/TCP 管理通信&#34;]
+        GOSSIP[&#34;7946/TCP+UDP 节点发现 (Gossip)&#34;]
+        DNS[&#34;Swarm 内置 DNS 127.0.0.11&lt;br/&gt;服务名 → VIP (IPVS 负载均衡)&#34;]
+    end</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Overlay 网络解决&quot;多台主机上的容器像在同一个二层网络一样通信&quot;，适合微服务架构、Web 集群、中间件集群；不适合数据库高性能与大流量同步场景（存在封装开销）。</li>
+<li>两台物理机部署实例：Node1 (CentOS, swarm-manager, 10.10.1.11) + Node2 (Ubuntu, swarm-worker, 10.10.1.12)，Overlay 网络 app-overlay 规划 10.0.0.0/24，Web-01 (10.0.0.11) 与 Web-02 (10.0.0.12) 跨机互通。</li>
+<li>部署四步：<code>docker swarm init --advertise-addr 10.10.1.11</code> → Worker 用 token join → <code>docker network create -d overlay app-overlay</code> → <code>docker service create --name web --replicas 2 --network app-overlay nginx</code>。</li>
+<li>VXLAN 原理：将二层以太网帧封装在三层 UDP（目的端口 4789）中传输，VNI 用 24 位支持 1677 万隔离网络，突破 VLAN 4096 上限、隐藏虚拟 MAC、支持跨三层迁移。</li>
+<li>VTEP 靠映射表（Inner MAC/IP → Outer VTEP IP → VNI）寻址；映射表建立方式：数据平面 Flood &amp; Learn、控制平面 MP-BGP EVPN、SDN/K8s 控制器下发、静态配置。</li>
+<li>多 VXLAN 组网原则：&ldquo;同一 VXLAN 内靠二层交换，不同 VXLAN 之间靠三层路由&rdquo;（分布式网关 / Symmetric IRB / EVPN / VNI Translation / Cilium ClusterMesh）。</li>
+<li>Swarm 对外发布三种方式：端口映射（Ingress Routing Mesh，任意节点 IP+端口经 IPVS 转发）、mode=host 直连、入口反向代理（生产标准做法，nginx.conf 用 <code>server web:80 resolve</code> 经 Swarm DNS 解析 VIP）。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>Swarm 关键端口：2377/TCP（集群管理 Control Plane）、7946/TCP+UDP（节点发现 Gossip）、4789/UDP（VXLAN 数据平面）；防火墙需用 firewall-cmd 逐一放通。</li>
+<li><code>docker swarm init --advertise-addr</code> 必须在多网卡主机上显式指定通告 IP，避免 Docker 无法确定集群通信地址而报错。</li>
+<li>Swarm 三层抽象：Service（期望状态声明）→ Task（Manager 拆分的任务）→ Container（Worker 实际运行的容器副本）；提供声明式自愈、滚动更新、<code>--mode global</code>（类 DaemonSet）与 <code>--mode replicated</code>（默认副本模式）。</li>
+<li>docker swarm init 只激活 Swarm 模式，不能切换 K8s/Nomad；K8s 需 kubeadm init 或 Docker Desktop 的 Enable Kubernetes。</li>
+<li>VXLAN 封包流程：原始以太网帧 + VXLAN 报头（VNI）+ UDP 头（4789）+ 外层 IP 头（物理机 IP）；物理网络只按外层 IP 做普通 UDP 路由。</li>
+<li>Swarm DNS：容器 /etc/resolv.conf 中 nameserver 127.0.0.11；<code>nslookup web</code> 返回 VIP，<code>nslookup tasks.web</code> 返回全部副本真实 IP；<code>docker service inspect --format '{{json .Endpoint.VirtualIPs}}' web</code> 查看 VIP。</li>
+<li>外部 DNS 转发：/etc/docker/daemon.json 配置 <code>&quot;dns&quot;: [&quot;8.8.8.8&quot;, &quot;114.114.114.114&quot;]</code> 后 systemctl restart docker。</li>
+<li>Swarm 与 K8s 概念对应：Task/Container ↔ Pod、Service ↔ Deployment/StatefulSet、Manager ↔ Master、Overlay ↔ CNI 插件、Ingress Routing Mesh ↔ Ingress Controller、Docker Config/Secret ↔ ConfigMap/Secret。</li>
+<li>K8s 部署要点（kubeadm）：所有节点关 swap、关防火墙/SELinux、加载 overlay + br_netfilter 模块并设置 bridge-nf-call-iptables=1、安装 containerd（SystemdCgroup=true）、kubeadm init &ndash;pod-network-cidr=10.244.0.0/16、部署 Calico、Worker 用 kubeadm join 加入、<code>kubectl get nodes</code> 全 Ready 即成功。</li>
+<li>SSL/TLS 基础：SSL 是 TLS 前身，SSL2.0/3.0 与 TLS1.0/1.1 已废弃；三大作用（加密、认证、完整性）；证书分 DV/OV/EV；HTTPS 默认 443 端口并显示锁标志。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>下面给你一个比较典型的 Docker Overlay Network 跨物理机部署实例。这个案例是很多企业内部微服务、Web 集群、中间件集群的经典方案。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/overlay-vxlan/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Technology</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/technology/vm/vm/route-mode-of-vm/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="虚机网段的nat和路由模式">虚机网段的NAT和路由模式</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TB
+    subgraph Internet[&#34;互联网 Internet&#34;]
+        NET((Internet))
+    end
+
+    subgraph FG[&#34;防火墙 FortiGate&#34;]
+        FGT[&#34;FortiGate&lt;br/&gt;192.168.10.1&lt;br/&gt;(WAN出口)&#34;]
+    end
+
+    subgraph DMZ[&#34;DMZ 网段 192.168.10.0/24&#34;]
+        NIC1[&#34;Hyper-V Host NIC1&lt;br/&gt;192.168.10.10&#34;]
+    end
+
+    subgraph HOST[&#34;Hyper-V Host&#34;]
+        NIC1
+        RT[&#34;路由转发 (方案二)&lt;br/&gt;vEthernet: 172.10.0.1&#34;]
+        NAT[&#34;NAT 网关 (方案三)&lt;br/&gt;NAT Gateway: 172.10.0.1&#34;]
+        RT --- NAT
+    end
+
+    subgraph VMS[&#34;虚拟机网段 172.10.0.0/24 (内部虚拟交换机 / NAT Network)&#34;]
+        VM1[&#34;VM01&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM2[&#34;VM02&lt;br/&gt;172.10.0.11&lt;br/&gt;GW 172.10.0.1&#34;]
+        VM3[&#34;VM03&lt;br/&gt;172.10.0.12&lt;br/&gt;GW 172.10.0.1&#34;]
+    end
+
+    NET --- FGT
+    FGT --- NIC1
+
+    %% 方案二：路由模式 —— VM 真实 IP 可见，需在 FortiGate 加静态路由
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案二: 路由转发&lt;br/&gt;源 IP 172.10.0.x 不变&#34;| RT
+    RT --&gt; NIC1
+    NIC1 --&gt;|&#34;FORWARD: 172.10.0.0/24 → FortiGate&#34;| FGT
+    FGT -.-&gt;|&#34;回程: 静态路由&lt;br/&gt;172.10.0.0/24 → 192.168.10.10&#34;| RT
+
+    %% 方案三：NAT 模式 —— 出站做 SNAT/MASQUERADE
+    VM1 &amp; VM2 &amp; VM3 --&gt;|&#34;方案三: NAT&lt;br/&gt;POSTROUTING SNAT/MASQUERADE&lt;br/&gt;172.10.0.x → 192.168.10.10&#34;| NAT
+    NAT --&gt; NIC1
+    NIC1 --&gt;|&#34;对 Internet 显示为 192.168.10.10&#34;| FGT</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>文档对比了 Hyper-V 环境下虚机网段（172.10.0.0/24）接入网络的两种方案：<strong>方案二 路由转发（不使用 NAT）</strong> 与 <strong>方案三 NAT 模式</strong>。</li>
+<li>路由模式下 Hyper-V Host 充当三层路由器，FortiGate 需增加静态路由（目的 172.10.0.0/24，下一跳 192.168.10.10），VM 真实 IP 在网络中可见，外部可主动访问 VM。</li>
+<li>NAT 模式下 Hyper-V Host 做 NAT（172.10.0.x 出站转换为 192.168.10.10），FortiGate 无需静态路由，配置简单，但外部无法主动访问 VM。</li>
+<li>选型建议：正式服务器（Web、SQL、应用服务器）推荐路由模式；测试虚机、实验室环境、临时服务器推荐 NAT 模式。</li>
+<li>文档还给出了 Hyper-V Host 上 <code>Get-NetIPInterface</code> 的实际输出，显示各接口（Internal、DMZ、External 虚拟交换机）的 IPv4 转发功能默认均为 Disabled，启用路由转发前需要开启。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li><strong>虚拟机独立网段</strong>：VM 统一使用私有网段 172.10.0.0/24，网关指向 Hyper-V Host 上的 vEthernet / NAT Gateway 地址 172.10.0.1。</li>
+<li><strong>Hyper-V Host 双角色</strong>：上行通过 NIC1（192.168.10.10）接入 DMZ 网段 192.168.10.0/24；下行连接内部虚拟交换机（Internal vSwitch）承载 VM 流量。</li>
+<li><strong>路由模式回程路径</strong>：Internet → FortiGate →（静态路由 172.10.0.0/24 → 192.168.10.10）→ Hyper-V Host → VM，要求 FortiGate 知道去往 VM 网段的下一跳。</li>
+<li><strong>NAT 模式出站路径</strong>：VM（172.10.0.10）→ Host NAT 转换为 192.168.10.10 → FortiGate → Internet；对 Internet 而言所有 VM（172.10.0.x）都显示为 192.168.10.10。</li>
+<li><strong>NAT 模式的安全副作用</strong>：由于外部无法主动访问 VM，天然隔离了入站流量，适合实验环境但不适合需要对外提供服务的服务器。</li>
+<li><strong>接口转发状态检查</strong>：<code>Get-NetIPInterface -AddressFamily IPv4 | Format-Table ifIndex,InterfaceAlias,Forwarding</code> 可查看各接口 IPv4 转发状态；示例输出中全部为 Disabled，做路由器前需启用转发。</li>
+<li><strong>接口优先级（InterfaceMetric）</strong>：Internal-vSwitch01 的 Metric 为 15，低于 DMZ/External 的 25，会影响同网段路由选择的优先顺序。</li>
+<li><strong>两种方案可用性对比</strong>：VM 上网两者均可；Internet 访问 VM、VM 真实 IP 可见仅路由模式支持；静态路由需求与配置复杂度上路由模式更高。</li>
+<li><strong>环境选型原则</strong>：生产环境（企业）推荐路由模式保证可管理、可被访问；实验/临时环境推荐 NAT 模式降低配置成本。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>下面是你提到的两种方案的拓扑图。</p>
+    </div>
+    <a href="/myweb/technology/vm/vm/route-mode-of-vm/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+    </section>
+    
+		<ul class="pagination pagination-default">
+			<li class="page-item">
+				<a href="/myweb/technology/" aria-label="First" class="page-link" role="button"><span aria-hidden="true">&laquo;&laquo;</span></a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/technology/page/2/" aria-label="Previous" class="page-link" role="button"><span aria-hidden="true">&laquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/technology/" aria-label="Page 1" class="page-link" role="button">1</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/technology/page/2/" aria-label="Page 2" class="page-link" role="button">2</a>
+			</li>
+			<li class="page-item active">
+				<a aria-current="page" aria-label="Page 3" class="page-link" role="button">3</a>
+			</li>
+		<li class="page-item disabled">
+			<a aria-disabled="true" aria-label="Next" class="page-link" role="button" tabindex="-1"><span aria-hidden="true">&raquo;</span></a>
+		</li>
+			<li class="page-item disabled">
+				<a aria-disabled="true" aria-label="Last" class="page-link" role="button" tabindex="-1"><span aria-hidden="true">&raquo;&raquo;</span></a>
+			</li>
+		</ul></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

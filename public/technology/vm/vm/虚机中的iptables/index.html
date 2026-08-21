@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="虚机中的 IPTABLES
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;]
+    VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;]
+    VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;]
+    D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;]
+    BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;]
+
+    EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;]
+    DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB
+    LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG
+    PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]
+  摘要
+
+通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) &#43; br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。
+PostgreSQL 端口映射 127.0.0.1:55432 → 172.17.0.2:5432 只能本机访问：raw 表 -A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP 专门拦截外部尝试访问 10.10.10.22:55432。
+Web 容器 10.10.10.22:443 → 172.18.0.2:8000（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。
+容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。
+容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 -A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT 和 -i docker0 -j ACCEPT，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。
+UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。
+值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。
+
+技术要点
+
+由 -A DOCKER -d 172.17.0.2/32 可确定 docker0 下有一个容器（172.17.0.2）；由 -A DOCKER -d 172.18.0.2/32 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。
+PostgreSQL 端口映射实为 docker run -p 127.0.0.1:55432:5432；访问方式仅限本机 psql -h localhost -p 55432，外部机器不能访问 10.10.10.22:55432。
+Web 容器端口映射等价 docker run -p 443:8000；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。
+容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。
+当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。
+FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。
+若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。
+容器互通验证方法：docker exec -it 容器 bash 后分别 ping 172.18.0.2 与 ping 172.17.0.2。
+raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。
+
+原文内容
+这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/%E8%99%9A%E6%9C%BA%E4%B8%AD%E7%9A%84iptables/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/%E8%99%9A%E6%9C%BA%E4%B8%AD%E7%9A%84iptables/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="虚机中的 IPTABLES 架构图 Copyflowchart TD HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;] VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;] VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;] D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;] BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;] EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;] DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]摘要 通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) &#43; br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。 PostgreSQL 端口映射 127.0.0.1:55432 → 172.17.0.2:5432 只能本机访问：raw 表 -A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP 专门拦截外部尝试访问 10.10.10.22:55432。 Web 容器 10.10.10.22:443 → 172.18.0.2:8000（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。 容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。 容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 -A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT 和 -i docker0 -j ACCEPT，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。 UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。 值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。 技术要点 由 -A DOCKER -d 172.17.0.2/32 可确定 docker0 下有一个容器（172.17.0.2）；由 -A DOCKER -d 172.18.0.2/32 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。 PostgreSQL 端口映射实为 docker run -p 127.0.0.1:55432:5432；访问方式仅限本机 psql -h localhost -p 55432，外部机器不能访问 10.10.10.22:55432。 Web 容器端口映射等价 docker run -p 443:8000；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。 容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。 当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。 FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。 若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。 容器互通验证方法：docker exec -it 容器 bash 后分别 ping 172.18.0.2 与 ping 172.17.0.2。 raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。 原文内容 这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="虚机中的 IPTABLES 架构图 Copyflowchart TD HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;] VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;] VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;] D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;] BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;] EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;] DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]摘要 通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) &#43; br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。 PostgreSQL 端口映射 127.0.0.1:55432 → 172.17.0.2:5432 只能本机访问：raw 表 -A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP 专门拦截外部尝试访问 10.10.10.22:55432。 Web 容器 10.10.10.22:443 → 172.18.0.2:8000（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。 容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。 容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 -A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT 和 -i docker0 -j ACCEPT，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。 UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。 值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。 技术要点 由 -A DOCKER -d 172.17.0.2/32 可确定 docker0 下有一个容器（172.17.0.2）；由 -A DOCKER -d 172.18.0.2/32 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。 PostgreSQL 端口映射实为 docker run -p 127.0.0.1:55432:5432；访问方式仅限本机 psql -h localhost -p 55432，外部机器不能访问 10.10.10.22:55432。 Web 容器端口映射等价 docker run -p 443:8000；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。 容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。 当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。 FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。 若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。 容器互通验证方法：docker exec -it 容器 bash 后分别 ping 172.18.0.2 与 ping 172.17.0.2。 raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。 原文内容 这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。">
+	<meta itemprop="wordCount" content="554">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="虚机中的 IPTABLES 架构图 Copyflowchart TD HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;] VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;] VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;] D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;] BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;] EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;] DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]摘要 通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) &#43; br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。 PostgreSQL 端口映射 127.0.0.1:55432 → 172.17.0.2:5432 只能本机访问：raw 表 -A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP 专门拦截外部尝试访问 10.10.10.22:55432。 Web 容器 10.10.10.22:443 → 172.18.0.2:8000（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。 容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。 容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 -A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT 和 -i docker0 -j ACCEPT，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。 UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。 值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。 技术要点 由 -A DOCKER -d 172.17.0.2/32 可确定 docker0 下有一个容器（172.17.0.2）；由 -A DOCKER -d 172.18.0.2/32 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。 PostgreSQL 端口映射实为 docker run -p 127.0.0.1:55432:5432；访问方式仅限本机 psql -h localhost -p 55432，外部机器不能访问 10.10.10.22:55432。 Web 容器端口映射等价 docker run -p 443:8000；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。 容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。 当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。 FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。 若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。 容器互通验证方法：docker exec -it 容器 bash 后分别 ping 172.18.0.2 与 ping 172.17.0.2。 raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。 原文内容 这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-虚机中的IPTABLES">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-虚机中的IPTABLES flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机中的-iptables">虚机中的 IPTABLES</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    HV[&#34;Hyper-V&#34;] --&gt; VM[&#34;Ubuntu VM 10.10.10.22 (eth0)&#34;]
+    VM --&gt; D0[&#34;docker0&lt;br/&gt;172.17.0.1&#34;]
+    VM --&gt; BR[&#34;br-4d44c079d811&lt;br/&gt;172.18.0.1&#34;]
+    D0 --&gt; PG[&#34;PostgreSQL&lt;br/&gt;172.17.0.2 :5432&#34;]
+    BR --&gt; WEB[&#34;Web Container&lt;br/&gt;172.18.0.2 :8000&#34;]
+
+    EXT[&#34;外部访问 10.10.10.22:443&#34;] --&gt; DNAT[&#34;nat PREROUTING → DOCKER 链&lt;br/&gt;DNAT 443 → 172.18.0.2:8000&#34;]
+    DNAT --&gt; FWD[&#34;FORWARD: DOCKER-USER → DOCKER-FORWARD&lt;br/&gt;(DOCKER-CT / DOCKER-INTERNAL / DOCKER-BRIDGE)&#34;] --&gt; WEB
+    LO[&#34;本机 127.0.0.1:55432&#34;] --&gt; DNAT2[&#34;DNAT → 172.17.0.2:5432&lt;br/&gt;(raw 表 PREROUTING DROP 拦截非 lo 入口)&#34;] --&gt; PG
+    PG --&gt; MASQ[&#34;POSTROUTING MASQUERADE&lt;br/&gt;172.17.0.0/16 / 172.18.0.0/16&lt;br/&gt;→ 源地址变为 10.10.10.22&#34;] --&gt; INET[&#34;Internet (经 FortiGate)&#34;]</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>通过 iptables-save 反向还原网络拓扑：Hyper-V → Ubuntu VM (10.10.10.22, eth0) → docker0 (172.17.0.1，挂 PostgreSQL 172.17.0.2:5432) + br-4d44c079d811 (172.18.0.1，挂 Web 容器 172.18.0.2:8000)。</li>
+<li>PostgreSQL 端口映射 <code>127.0.0.1:55432 → 172.17.0.2:5432</code> 只能本机访问：raw 表 <code>-A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp --dport 55432 -j DROP</code> 专门拦截外部尝试访问 10.10.10.22:55432。</li>
+<li>Web 容器 <code>10.10.10.22:443 → 172.18.0.2:8000</code>（等价 docker run -p 443:8000），整个 10.10.10.0/24 网络都可访问；若 FortiGate 做 VIP（110.x.x.x → 10.10.10.22:443），该容器即对公网发布。</li>
+<li>容器上网靠 POSTROUTING 的 MASQUERADE：172.17.0.0/16 与 172.18.0.0/16 出网时源地址都变为 10.10.10.22，经 FortiGate 到 Internet。</li>
+<li>容器互通性：未见 DOCKER-ISOLATION-STAGE-1/2 阻断，反而有 <code>-A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT</code> 和 <code>-i docker0 -j ACCEPT</code>，Docker 允许两个桥产生转发流量，但真正互通需进容器 ping 验证。</li>
+<li>UFW 是否失效：INPUT 链仍生效（ufw-* 链正常处理主机入站）；FORWARD 链基本被 Docker 抢走——容器流量优先经过 DOCKER-USER、DOCKER-FORWARD，之后才轮到 ufw-before-forward，与计数器一致（ufw forward 链计数为 0）。</li>
+<li>值得执行的命令：docker ps、docker network ls、docker network inspect bridge、docker network inspect $(docker network ls -q | grep 4d44c079d811)，把容器名称、容器 IP、所属网桥、对外端口全部对应起来。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>由 <code>-A DOCKER -d 172.17.0.2/32</code> 可确定 docker0 下有一个容器（172.17.0.2）；由 <code>-A DOCKER -d 172.18.0.2/32</code> 确定 br-4d44c079d811 下有一个容器（172.18.0.2）。</li>
+<li>PostgreSQL 端口映射实为 <code>docker run -p 127.0.0.1:55432:5432</code>；访问方式仅限本机 <code>psql -h localhost -p 55432</code>，外部机器不能访问 10.10.10.22:55432。</li>
+<li>Web 容器端口映射等价 <code>docker run -p 443:8000</code>；访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000。</li>
+<li>容器出网路径：Container 172.18.0.2 → br-4d44c079d811 (172.18.0.1) → Ubuntu (10.10.10.22) → FortiGate → Internet；源地址经 MASQUERADE 转换。</li>
+<li>当前实际暴露到网络的服务只有两个：PostgreSQL（仅本机）与 Web（10.10.10.0/24 全网可访问）。</li>
+<li>FORWARD 链顺序：DOCKER-USER → DOCKER-FORWARD → ufw-before-forward 等，因此 Docker 容器流量不经过 UFW 的 forward 规则。</li>
+<li>若 FortiGate 已对 10.10.10.22:443 做 VIP，则 Web 容器已对公网发布，需评估暴露面。</li>
+<li>容器互通验证方法：<code>docker exec -it 容器 bash</code> 后分别 <code>ping 172.18.0.2</code> 与 <code>ping 172.17.0.2</code>。</li>
+<li>raw 表中的三条 DROP（目的 172.17.0.2、127.0.0.1:55432、172.18.0.2 非本桥入口）保证容器 IP 与 loopback 映射端口不被外部直连绕过。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>这份 iptables-save 已经把你的 Docker 网络结构暴露得非常清楚了。我来反向还原整个网络拓扑和流量路径。</p>
+<h1 id="一最终网络拓扑">一、最终网络拓扑</h1>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Hyper-V
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>Ubuntu VM
+</span></span><span style="display:flex;"><span>10.10.10.22 (eth0)
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ├─────────────────────────┐
+</span></span><span style="display:flex;"><span>   │                         │
+</span></span><span style="display:flex;"><span>   ▼                         ▼
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>docker0                 br-4d44c079d811
+</span></span><span style="display:flex;"><span>172.17.0.1              172.18.0.1
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>   │                         │
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>172.17.0.2              172.18.0.2
+</span></span><span style="display:flex;"><span>PostgreSQL              Web Container
+</span></span><span style="display:flex;"><span>5432                    8000</span></span></code></pre></div>
+  </div><h1 id="二容器数量分析">二、容器数量分析</h1>
+<p>从配置来看：</p>
+<h2 id="docker0">docker0</h2>
+<p>发现：172.17.0.2</p>
+<p>对应规则：<code>-A DOCKER -d 172.17.0.2/32</code></p>
+<p>说明：docker0 └─ 一个容器 172.17.0.2</p>
+<h2 id="br-4d44c079d811">br-4d44c079d811</h2>
+<p>发现：172.18.0.2</p>
+<p>对应：<code>-A DOCKER -d 172.18.0.2/32</code></p>
+<p>说明：br-4d44c079d811 └─ 一个容器 172.18.0.2</p>
+<h1 id="三容器端口映射">三、容器端口映射</h1>
+<h2 id="postgresql-容器">PostgreSQL 容器</h2>
+<p>看到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>DNAT
+</span></span><span style="display:flex;"><span>127.0.0.1:55432
+</span></span><span style="display:flex;"><span>   ↓
+</span></span><span style="display:flex;"><span>172.17.0.2:5432</span></span></code></pre></div>
+  </div><p>实际含义：localhost:55432 ↓ PostgreSQL 172.17.0.2:5432</p>
+<p>相当于：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker run <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -p 127.0.0.1:55432:5432</span></span></code></pre></div>
+  </div><h3 id="访问方式">访问方式</h3>
+<p>只能本机 <code>psql -h localhost -p 55432</code> 访问。</p>
+<p>外部机器 10.10.10.22:55432 不能访问。</p>
+<p>因为你还有这条规则（专门限制了）：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>-A PREROUTING
+</span></span><span style="display:flex;"><span>-d 127.0.0.1
+</span></span><span style="display:flex;"><span>--dport 55432
+</span></span><span style="display:flex;"><span>-j DROP</span></span></code></pre></div>
+  </div><h1 id="四web-容器">四、Web 容器</h1>
+<p>规则：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>443 ↓ 172.18.0.2:8000</span></span></code></pre></div>
+  </div><p>即：10.10.10.22:443 ↓ 172.18.0.2:8000</p>
+<p>相当于：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker run -p 443:8000</span></span></code></pre></div>
+  </div><p>访问路径：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>浏览器
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>https://10.10.10.22
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>Docker NAT
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>172.18.0.2:8000</span></span></code></pre></div>
+  </div><h1 id="五容器上网如何实现">五、容器上网如何实现</h1>
+<p>最关键规则：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>-A POSTROUTING
+</span></span><span style="display:flex;"><span>-s 172.17.0.0/16
+</span></span><span style="display:flex;"><span>-j MASQUERADE
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>-A POSTROUTING
+</span></span><span style="display:flex;"><span>-s 172.18.0.0/16
+</span></span><span style="display:flex;"><span>-j MASQUERADE</span></span></code></pre></div>
+  </div><p>意思：容器访问外网，172.17.0.2 会变成 10.10.10.22 出去；同样 172.18.0.2 也会变成 10.10.10.22 出去。访问互联网：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Container 172.18.0.2
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>br-4d44c079d811 172.18.0.1
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>Ubuntu 10.10.10.22
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>FortiGate
+</span></span><span style="display:flex;"><span>   │
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>Internet</span></span></code></pre></div>
+  </div><h1 id="六容器之间是否互通">六、容器之间是否互通？</h1>
+<p>很关键。你这里没有看到 DOCKER-ISOLATION-STAGE-1 / DOCKER-ISOLATION-STAGE-2 规则。</p>
+<p>反而看到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>-A DOCKER-FORWARD -i br-4d44c079d811 -j ACCEPT
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>-A DOCKER-FORWARD -i docker0 -j ACCEPT</span></span></code></pre></div>
+  </div><p>说明：Docker 允许这两个 Bridge 产生转发流量。但是是否真正互通还要验证。</p>
+<p>直接测试：进入容器（<code>docker exec -it 容器 bash</code>），测试 <code>ping 172.18.0.2</code> 以及 <code>ping 172.17.0.2</code>。</p>
+<h1 id="七ufw-是否失效">七、UFW 是否失效</h1>
+<p>答案：</p>
+<ul>
+<li>✅ INPUT 链生效</li>
+<li>❌ FORWARD 链基本被 Docker 抢走</li>
+</ul>
+<p>你这里 FORWARD 的顺序是：DOCKER-USER → DOCKER-FORWARD，然后才是 ufw-before-forward。</p>
+<p>所以：Docker 容器流量优先经历 DOCKER-USER、DOCKER-FORWARD，之后才轮到 UFW。这和前面计数器一致（ufw forward 相关链计数为 0）。</p>
+<h1 id="八当前暴露到网络的服务">八、当前暴露到网络的服务</h1>
+<p>实际上只有两个：</p>
+<h3 id="postgresql">PostgreSQL</h3>
+<p>仅本机可访问（127.0.0.1:55432 ↓ 172.17.0.2:5432）。</p>
+<h3 id="web">Web</h3>
+<p>整个 10.10.10.0/24 网络都可以访问（10.10.10.22:443 ↓ 172.18.0.2:8000）。</p>
+<p>如果 FortiGate 做 VIP（110.x.x.x ↓ 10.10.10.22:443 ↓ 172.18.0.2:8000），那么这个容器就已经对公网发布了。</p>
+<h1 id="当前最值得执行的命令">当前最值得执行的命令</h1>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker ps
+</span></span><span style="display:flex;"><span>docker network ls
+</span></span><span style="display:flex;"><span>docker network inspect bridge
+</span></span><span style="display:flex;"><span>docker network inspect <span style="color:#66d9ef">$(</span>docker network ls -q | grep 4d44c079d811<span style="color:#66d9ef">)</span></span></span></code></pre></div>
+  </div><p>这样可以直接把容器名称、容器 IP、所属网桥、对外端口全部对应起来。</p>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="容器 iptables 与 UFW 的关系
+架构图
+
+    
+      Copy
+    
+    flowchart TD
+    C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;]
+
+    subgraph IPT[&#34;iptables 数据流&#34;]
+        PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;]
+        DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;]
+        FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;]
+        INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;]
+    end
+
+    VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;]
+    INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;]
+    DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD
+  摘要
+
+Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。
+环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。
+原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 ufw deny 443 拦不住 docker run -p 443:8000 发布的端口。
+Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。
+Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。
+备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 &quot;iptables&quot;: false 后自行管理规则），但配置复杂。
+
+技术要点
+
+数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。
+典型踩坑：ufw status 显示 443 DENY，但 docker run -p 443:8000 后外部仍能访问——Docker 插入规则优先于 UFW。
+查看 Docker 创建的 NAT 规则：iptables -t nat -L -n -v，可看到 DNAT tcp dpt:443 to:172.18.0.2:8000。
+查看 FORWARD 链：iptables -L FORWARD -n -v，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。
+查看 DOCKER-USER 链默认内容：iptables -L DOCKER-USER -n -v，通常只有 Chain DOCKER-USER / RETURN all（即默认放行）。
+禁止外部访问容器 443：不要只依赖 UFW，用 iptables -I DOCKER-USER -p tcp --dport 443 -j DROP 在 Docker 转发前拦截。
+企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 {&quot;iptables&quot;: false} 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。
+企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT &#43; iptables -A DOCKER-USER -j DROP。
+快速验证三段命令：sudo iptables -L DOCKER-USER -n -v、sudo iptables -L FORWARD -n -v、sudo iptables -t nat -L DOCKER -n -v，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。
+
+原文内容
+会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/technology/vm/vm/%E5%AE%B9%E5%99%A8iptables%E4%B8%8Eufw%E7%9A%84%E5%85%B3%E7%B3%BB/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/technology/vm/vm/%E5%AE%B9%E5%99%A8iptables%E4%B8%8Eufw%E7%9A%84%E5%85%B3%E7%B3%BB/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Gourney Of oG-Go">
+	<meta property="og:description" content="容器 iptables 与 UFW 的关系 架构图 Copyflowchart TD C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;] subgraph IPT[&#34;iptables 数据流&#34;] PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;] DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;] FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;] INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;] end VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;] INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;] DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD摘要 Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。 环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。 原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 ufw deny 443 拦不住 docker run -p 443:8000 发布的端口。 Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。 Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。 备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 &#34;iptables&#34;: false 后自行管理规则），但配置复杂。 技术要点 数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。 典型踩坑：ufw status 显示 443 DENY，但 docker run -p 443:8000 后外部仍能访问——Docker 插入规则优先于 UFW。 查看 Docker 创建的 NAT 规则：iptables -t nat -L -n -v，可看到 DNAT tcp dpt:443 to:172.18.0.2:8000。 查看 FORWARD 链：iptables -L FORWARD -n -v，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。 查看 DOCKER-USER 链默认内容：iptables -L DOCKER-USER -n -v，通常只有 Chain DOCKER-USER / RETURN all（即默认放行）。 禁止外部访问容器 443：不要只依赖 UFW，用 iptables -I DOCKER-USER -p tcp --dport 443 -j DROP 在 Docker 转发前拦截。 企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 {&#34;iptables&#34;: false} 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。 企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT &#43; iptables -A DOCKER-USER -j DROP。 快速验证三段命令：sudo iptables -L DOCKER-USER -n -v、sudo iptables -L FORWARD -n -v、sudo iptables -t nat -L DOCKER -n -v，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。 原文内容 会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="article">
+		<meta property="article:section" content="technology">
+
+	<meta itemprop="name" content="Gourney Of oG-Go">
+	<meta itemprop="description" content="容器 iptables 与 UFW 的关系 架构图 Copyflowchart TD C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;] subgraph IPT[&#34;iptables 数据流&#34;] PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;] DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;] FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;] INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;] end VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;] INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;] DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD摘要 Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。 环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。 原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 ufw deny 443 拦不住 docker run -p 443:8000 发布的端口。 Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。 Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。 备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 &#34;iptables&#34;: false 后自行管理规则），但配置复杂。 技术要点 数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。 典型踩坑：ufw status 显示 443 DENY，但 docker run -p 443:8000 后外部仍能访问——Docker 插入规则优先于 UFW。 查看 Docker 创建的 NAT 规则：iptables -t nat -L -n -v，可看到 DNAT tcp dpt:443 to:172.18.0.2:8000。 查看 FORWARD 链：iptables -L FORWARD -n -v，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。 查看 DOCKER-USER 链默认内容：iptables -L DOCKER-USER -n -v，通常只有 Chain DOCKER-USER / RETURN all（即默认放行）。 禁止外部访问容器 443：不要只依赖 UFW，用 iptables -I DOCKER-USER -p tcp --dport 443 -j DROP 在 Docker 转发前拦截。 企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 {&#34;iptables&#34;: false} 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。 企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT &#43; iptables -A DOCKER-USER -j DROP。 快速验证三段命令：sudo iptables -L DOCKER-USER -n -v、sudo iptables -L FORWARD -n -v、sudo iptables -t nat -L DOCKER -n -v，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。 原文内容 会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。">
+	<meta itemprop="wordCount" content="524">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Gourney Of oG-Go">
+	<meta name="twitter:description" content="容器 iptables 与 UFW 的关系 架构图 Copyflowchart TD C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;] subgraph IPT[&#34;iptables 数据流&#34;] PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;] DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;] FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;] INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;] end VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;] INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;] DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD摘要 Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。 环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。 原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 ufw deny 443 拦不住 docker run -p 443:8000 发布的端口。 Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。 Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。 备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 &#34;iptables&#34;: false 后自行管理规则），但配置复杂。 技术要点 数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。 典型踩坑：ufw status 显示 443 DENY，但 docker run -p 443:8000 后外部仍能访问——Docker 插入规则优先于 UFW。 查看 Docker 创建的 NAT 规则：iptables -t nat -L -n -v，可看到 DNAT tcp dpt:443 to:172.18.0.2:8000。 查看 FORWARD 链：iptables -L FORWARD -n -v，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。 查看 DOCKER-USER 链默认内容：iptables -L DOCKER-USER -n -v，通常只有 Chain DOCKER-USER / RETURN all（即默认放行）。 禁止外部访问容器 443：不要只依赖 UFW，用 iptables -I DOCKER-USER -p tcp --dport 443 -j DROP 在 Docker 转发前拦截。 企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 {&#34;iptables&#34;: false} 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。 企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT &#43; iptables -A DOCKER-USER -j DROP。 快速验证三段命令：sudo iptables -L DOCKER-USER -n -v、sudo iptables -L FORWARD -n -v、sudo iptables -t nat -L DOCKER -n -v，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。 原文内容 会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-容器iptables与UFW的关系">
+   
+  
+
+
+  <header>
+    <div class="bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+    </div>
+  </header>
+
+
+<main class="pb7" role="main">
+  
+
+  <article class="page-容器iptables与UFW的关系 flex-l mw7 center ph3 flex-wrap justify-between">
+    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
+    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
+  </aside><div id="sharing" class="mt3 ananke-socials"></div>
+<h1 class="f1 athelas mt3 mb1"></h1>
+      
+      
+      
+
+      
+      
+    </header>
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="容器-iptables-与-ufw-的关系">容器 iptables 与 UFW 的关系</h1>
+<h2 id="架构图">架构图</h2>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <pre tabindex="0"><code class="language-mermaid" data-lang="mermaid">flowchart TD
+    C[&#34;Client 外部客户端&#34;] --&gt;|访问 10.10.10.22:443| VM[&#34;Ubuntu VM 10.10.10.22&lt;br/&gt;docker0: 172.17.0.1&lt;br/&gt;br-4d44c079d811: 172.18.0.1&#34;]
+
+    subgraph IPT[&#34;iptables 数据流&#34;]
+        PRE[&#34;PREROUTING&lt;br/&gt;(Docker DNAT: 443 → 172.18.0.2:8000)&#34;]
+        DUC[&#34;DOCKER Chain&lt;br/&gt;(Docker 自动放行规则)&#34;]
+        FWD[&#34;FORWARD&lt;br/&gt;(DOCKER-USER → DOCKER → DOCKER-ISOLATION)&#34;]
+        INPUT[&#34;INPUT 链 (UFW 规则在这里)&#34;]
+    end
+
+    VM --&gt; PRE --&gt; DUC --&gt; FWD --&gt; CT[&#34;Container 172.18.0.2:8000&#34;]
+    INPUT -.-&gt;|容器转发流量不经过 INPUT| X[&#34;UFW deny 443 不生效&#34;]
+    DU[&#34;DOCKER-USER 链&lt;br/&gt;企业统一安全控制点&lt;br/&gt;iptables -I DOCKER-USER ...&#34;] -.拦截.-&gt; FWD</code></pre>
+  </div><h2 id="摘要">摘要</h2>
+<ul>
+<li>Docker 不会让 Ubuntu 防火墙（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则——这是 Docker 在 Ubuntu 上经常引起误解的地方。</li>
+<li>环境背景：Ubuntu VM 10.10.10.22，docker0 (172.17.0.1) 与 br-4d44c079d811 (172.18.0.1)，且存在 443 → 172.18.0.2:8000 的 DNAT 规则。</li>
+<li>原因：外部访问 10.10.10.22:443 的流量先经 PREROUTING 的 Docker DNAT 直接转成 172.18.0.2:8000，再走 DOCKER Chain 和 FORWARD 链，根本不经过 INPUT 链，因此 <code>ufw deny 443</code> 拦不住 <code>docker run -p 443:8000</code> 发布的端口。</li>
+<li>Docker 直接修改 iptables，而 UFW 只是 iptables 的管理工具；Docker 插入规则的位置通常优先于 UFW。</li>
+<li>Docker 官方预留 DOCKER-USER 链作为用户控制点；推荐方案：保留 Docker 自动管理 iptables，统一在 DOCKER-USER 链做安全控制（如仅允许 10.10.10.0/24 访问、其余 DROP）。</li>
+<li>备选方案一是关闭 Docker 自动管理 iptables（/etc/docker/daemon.json 设 <code>&quot;iptables&quot;: false</code> 后自行管理规则），但配置复杂。</li>
+</ul>
+<h2 id="技术要点">技术要点</h2>
+<ol>
+<li>数据流路径：外部流量 → PREROUTING（Docker DNAT）→ DOCKER Chain → FORWARD → Container；而 INPUT 链（Ubuntu Firewall/UFW）不在路径上。</li>
+<li>典型踩坑：<code>ufw status</code> 显示 443 DENY，但 <code>docker run -p 443:8000</code> 后外部仍能访问——Docker 插入规则优先于 UFW。</li>
+<li>查看 Docker 创建的 NAT 规则：<code>iptables -t nat -L -n -v</code>，可看到 <code>DNAT tcp dpt:443 to:172.18.0.2:8000</code>。</li>
+<li>查看 FORWARD 链：<code>iptables -L FORWARD -n -v</code>，Docker 通常插入 DOCKER / DOCKER-USER / DOCKER-ISOLATION 三个子链。</li>
+<li>查看 DOCKER-USER 链默认内容：<code>iptables -L DOCKER-USER -n -v</code>，通常只有 <code>Chain DOCKER-USER / RETURN all</code>（即默认放行）。</li>
+<li>禁止外部访问容器 443：不要只依赖 UFW，用 <code>iptables -I DOCKER-USER -p tcp --dport 443 -j DROP</code> 在 Docker 转发前拦截。</li>
+<li>企业环境方案一（不推荐）：/etc/docker/daemon.json 设置 <code>{&quot;iptables&quot;: false}</code> 关闭 Docker 自动管理 iptables，然后自己管理全部规则，配置复杂。</li>
+<li>企业环境方案二（推荐）：保留 Docker iptables = true，统一在 DOCKER-USER 链做安全控制，如 <code>iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT</code> + <code>iptables -A DOCKER-USER -j DROP</code>。</li>
+<li>快速验证三段命令：<code>sudo iptables -L DOCKER-USER -n -v</code>、<code>sudo iptables -L FORWARD -n -v</code>、<code>sudo iptables -t nat -L DOCKER -n -v</code>，据此可判断 Docker 是否正在绕过 UFW、哪个容器开放了哪些端口、172.17.0.0/16 与 172.18.0.0/16 是否互通、防火墙真正生效路径。</li>
+</ol>
+<h2 id="原文内容">原文内容</h2>
+<p>会，而且这是 Docker 在 Ubuntu 上经常引起误解的地方。</p>
+<p>但准确地说：Docker 不会让 Ubuntu Firewall（iptables/ufw）完全失效，而是会绕过部分你原本以为会生效的规则。</p>
+<h1 id="你的环境">你的环境</h1>
+<p>从前面看到：</p>
+<ul>
+<li>Ubuntu VM：10.10.10.22</li>
+<li>docker0：172.17.0.1</li>
+<li>br-4d44c079d811：172.18.0.1</li>
+</ul>
+<p>并且存在 443 ↓ 172.18.0.2:8000 的 DNAT 规则。</p>
+<h1 id="为什么会感觉-firewall-失效">为什么会感觉 Firewall 失效？</h1>
+<p>例如 UFW 规则：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ufw deny <span style="color:#ae81ff">443</span></span></span></code></pre></div>
+  </div><p>你认为：任何人不能访问 443。</p>
+<p>但是 Docker 创建 <code>docker run -p 443:8000</code> 后，很可能仍然能访问。</p>
+<p>原因是：外部流量走的是 PREROUTING → DOCKER Chain → FORWARD → Container 路径，而不是 INPUT ↓ Ubuntu Firewall。</p>
+<h1 id="数据流示意">数据流示意</h1>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>外部流量
+</span></span><span style="display:flex;"><span>     ↓
+</span></span><span style="display:flex;"><span>PREROUTING
+</span></span><span style="display:flex;"><span>(Docker DNAT)
+</span></span><span style="display:flex;"><span>     ↓
+</span></span><span style="display:flex;"><span>DOCKER Chain
+</span></span><span style="display:flex;"><span>     ↓
+</span></span><span style="display:flex;"><span>FORWARD
+</span></span><span style="display:flex;"><span>     ↓
+</span></span><span style="display:flex;"><span>Container</span></span></code></pre></div>
+  </div><p>访问 10.10.10.22:443 实际上变成：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Client
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>   ▼
+</span></span><span style="display:flex;"><span>10.10.10.22:443
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>iptables NAT
+</span></span><span style="display:flex;"><span>   |
+</span></span><span style="display:flex;"><span>172.18.0.2:8000 (Container)</span></span></code></pre></div>
+  </div><p>因此很多 INPUT 链规则根本没机会匹配。</p>
+<h1 id="查看-docker-创建了什么规则">查看 Docker 创建了什么规则</h1>
+<p>你已经看到：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>iptables -t nat -L -n -v</span></span></code></pre></div>
+  </div><div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>DNAT tcp dpt:443 to:172.18.0.2:8000</span></span></code></pre></div>
+  </div><p>这就是 Docker 自动添加的。</p>
+<h1 id="查看-forward">查看 FORWARD</h1>
+<p>Docker 通常会插入 DOCKER、DOCKER-USER、DOCKER-ISOLATION，例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>FORWARD
+</span></span><span style="display:flex;"><span> |
+</span></span><span style="display:flex;"><span> +-- DOCKER-USER
+</span></span><span style="display:flex;"><span> |
+</span></span><span style="display:flex;"><span> +-- DOCKER
+</span></span><span style="display:flex;"><span> |
+</span></span><span style="display:flex;"><span> +-- DOCKER-ISOLATION</span></span></code></pre></div>
+  </div><h1 id="docker-官方推荐控制点">Docker 官方推荐控制点</h1>
+<p>Docker 在设计时预留了 DOCKER-USER 链。</p>
+<p>查看：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>iptables -L DOCKER-USER -n -v</span></span></code></pre></div>
+  </div><p>通常：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Chain DOCKER-USER
+</span></span><span style="display:flex;"><span>RETURN all</span></span></code></pre></div>
+  </div><h1 id="如果想禁止访问容器-443">如果想禁止访问容器 443</h1>
+<p>不要只依赖 UFW。可以：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>iptables -I DOCKER-USER <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -p tcp <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  --dport <span style="color:#ae81ff">443</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>  -j DROP</span></span></code></pre></div>
+  </div><p>这样会在 Docker 转发前拦截。</p>
+<h1 id="ufw-特别容易踩坑">UFW 特别容易踩坑</h1>
+<p>例如：<code>ufw status</code> 显示 443 DENY，但 <code>docker run -p 443:8000</code> 后仍然能访问。</p>
+<p>原因：Docker 直接修改 iptables，而 UFW 只是 iptables 管理工具；Docker 插入规则的位置通常优先于 UFW。</p>
+<h1 id="企业环境最佳实践">企业环境最佳实践</h1>
+<p>如果是服务器环境：</p>
+<h2 id="方案一">方案一</h2>
+<p>关闭 Docker 自动管理 iptables：</p>
+<p>文件：/etc/docker/daemon.json</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;iptables&#34;</span>: <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div>
+  </div><p>然后自己管理规则。但配置复杂。</p>
+<h2 id="方案二推荐">方案二（推荐）</h2>
+<p>保留 Docker iptables = true，然后统一在 DOCKER-USER 链做安全控制。</p>
+<p>例如：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>iptables -I DOCKER-USER -s 10.10.10.0/24 -j ACCEPT
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>iptables -A DOCKER-USER -j DROP</span></span></code></pre></div>
+  </div><h1 id="快速验证">快速验证</h1>
+<p>执行：</p>
+<div class="code-block">
+    <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
+      <span class="code-copy-label" aria-hidden="true">Copy</span>
+    </button>
+    <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo iptables -L DOCKER-USER -n -v
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sudo iptables -L FORWARD -n -v
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sudo iptables -t nat -L DOCKER -n -v</span></span></code></pre></div>
+  </div><p>如果你把这三段输出贴出来，我可以直接告诉你：</p>
+<ul>
+<li>Docker 是否正在绕过 UFW</li>
+<li>哪个容器开放了哪些端口</li>
+<li>172.17.0.0/16 与 172.18.0.0/16 是否能互通</li>
+<li>当前防火墙真正的生效路径是什么</li>
+</ul>
+<ul class="pa0">
+  
+</ul><ul class="pa0">
+  
+</ul>
+
+      
+    </div></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
