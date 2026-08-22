@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Posts | Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="My Web">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+    
+      <link href="/myweb/posts/index.xml" rel="alternate" type="application/rss+xml" title="Gourney Of oG-Go" />
+      <link href="/myweb/posts/index.xml" rel="feed" type="application/rss+xml" title="Gourney Of oG-Go" />
+      
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/posts/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/posts/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Posts">
+	<meta property="og:description" content="My Web">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="website">
+
+	<meta itemprop="name" content="Posts">
+	<meta itemprop="description" content="My Web">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Posts">
+	<meta name="twitter:description" content="My Web">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-section is-section">
+
+  <header>
+    <div class="pb3-m pb6-l bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+      
+      <div class="tc-l pv3 ph3 ph4-ns">
+        <h1 class="f2 f-subheadline-l fw2 light-silver mb0 lh-title">
+          Posts
+        </h1>
+        
+      </div>
+    </div>
+  </header>
+
+<main class="pb7" role="main">
+  
+  
+
+  <article class="pa3 pa4-ns nested-copy-line-height">
+    <section class="cf ph3 ph5-l pv3 pv4-l f4 tc-l center measure-wide lh-copy nested-links mid-gray"></section>
+    <section class="flex-ns mt5 flex-wrap justify-around">
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E5%9B%BD%E9%AB%98%E6%81%AF%E4%B8%8E%E5%B9%BF%E5%9C%BA%E5%8D%8F%E8%AE%AE/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>1980年代美国为压制14%的通胀加息至年化20%，美元大幅升值令日元被动贬值、日本出口成本减半，叠加石油危机倒逼日本以省油车完成产业升级（TPS生产系统），日本产品席卷美国、贸易逆差剧增；美国随即以100%关税加广场协议双管齐下，联合五国抛售美元并监督日元汇率，将日本按住，日本好日子到头。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E5%9B%BD%E9%AB%98%E6%81%AF%E4%B8%8E%E5%B9%BF%E5%9C%BA%E5%8D%8F%E8%AE%AE/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E6%97%A5%E8%B4%B8%E6%98%93%E6%88%98/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>美日30年贸易战的攻防主线是关税与汇率：从&quot;1美元衬衫&quot;出口限制到100%关税加广场协议，美国步步掐住日本靠廉价劳动力和日元贬值形成的成本优势；日本以大幅降息反击却被美国同步降息26次化解，放出的低息贷款无处可去涌入股市楼市，酿成1990年泡沫破裂，倒逼日本将立国理念从贸易出口改为对外投资。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E6%97%A5%E8%B4%B8%E6%98%93%E6%88%98/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E4%B8%8E%E7%BE%8E%E8%82%A1/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>美联储降息不及预期（原预期降至2.75%，现实是维持4%）导致美股大跌——市场此前已按大幅降息定价，只能&quot;退票&quot;重新估值；而美元因利差优势反而升值，人民币跌破7.32。对我们而言，中美3%利差限制国内降息空间，143万亿总债务年息近6万亿迫使必须降息发债，但增量资金有限，2025年政策主线是维持现状：不赔钱就是赢。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E4%B8%8E%E7%BE%8E%E8%82%A1/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E4%B8%8E%E8%B5%84%E9%87%91%E5%9B%9E%E6%B5%81/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>美联储降息不会重演2019年行情：当年中国3.95%的存款利率和6.1%的增速吸引美国零成本资金涌入，如今中美利差倒挂（美5%对中1.75%），外资不敢进来；真正想回流的只有外贸企业约4000亿美元滞留资金，但为保出口，人民币只可能短期升值、长期适当贬值，该资金停留也是暂时的。楼市更与美元降息脱钩——房企美元债违约已断绝外资通道，而银行净息差1.54%低于不良率加人力成本、实际亏损，存量房贷利率已无下调空间，普通人的最优策略是把钱分散存大银行、不参与投资。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E4%B8%8E%E8%B5%84%E9%87%91%E5%9B%9E%E6%B5%81/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E5%86%B3%E7%AD%96/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>美联储降息与否由国会监督下的委员会基于国内物价与就业决定，而非&quot;拉爆他国&quot;的阴谋：众参两院代表选民利益，可罢免美联储官员甚至总统，1981年沃尔克顶住压力加息至20%压制14%通胀即为明证。真正能&quot;收割&quot;世界的是英伟达式的科技垄断与索罗斯式的汇率做空资本；用大国博弈思维预判美联储行为，只会得出影响判断的阴谋论。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E8%81%94%E5%82%A8%E9%99%8D%E6%81%AF%E5%86%B3%E7%AD%96/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E7%BE%8E%E8%82%A1%E5%A4%A7%E8%B7%8C%E4%B8%8E%E9%99%8D%E6%81%AF/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>美股暴跌的根源是美国借债维持增长的&quot;毒瘾&quot;模式难以为继：欧洲与美国国内避险资金撤离股市转投国债。经济衰退能否倒逼美联储降息，取决于通胀是否回到2%以内——1979年沃尔克在衰退中仍加息至20%的先例说明，控通胀优先于救经济，若通胀突破3%，美联储不仅不降息反而可能加息。</p>
+    </div>
+    <a href="/myweb/posts/%E7%BE%8E%E8%82%A1%E5%A4%A7%E8%B7%8C%E4%B8%8E%E9%99%8D%E6%81%AF/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E8%82%A1%E5%B8%82%E5%8C%96%E5%80%BA%E9%80%BB%E8%BE%91/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>本轮股市大涨本质是&quot;债转股&quot;化债：给六大行注资、拉抬银行股翻倍使其市值覆盖债务，缓解恒大和城投坏账对银行体系的冲击。但推升股价的2万多亿资金并非散户存款搬家，而是老股民和机构的两融杠杆，推高了半导体等科技股的泡沫；只要散户这个占比99%的市场主体还没完全进场，指数就会继续拉升——关注开户数和牛市搜索热度是判断顶部风险的关键。</p>
+    </div>
+    <a href="/myweb/posts/%E8%82%A1%E5%B8%82%E5%8C%96%E5%80%BA%E9%80%BB%E8%BE%91/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E8%82%A1%E5%B8%82%E6%8B%89%E5%8D%87%E4%B8%8E%E4%BA%BA%E6%B0%91%E5%B8%81%E5%8D%87%E5%80%BC/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>股市是人民币升值的必要工具：存款、房产、股市三大资金池中唯有股市能稳住国内资金并吸引外资，人民币不升值则中美贸易谈判无从谈起——2015年股市吸金带动升值、暴跌后靠棚改房地产接盘的历史正在重演；但如今居民负债率高企、已无力接盘房地产，此次股市拉升时长取决于汇率、贸易谈判进程与散户进场程度。</p>
+    </div>
+    <a href="/myweb/posts/%E8%82%A1%E5%B8%82%E6%8B%89%E5%8D%87%E4%B8%8E%E4%BA%BA%E6%B0%91%E5%B8%81%E5%8D%87%E5%80%BC/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E8%B4%A7%E5%B8%81%E4%B9%98%E6%95%B0%E4%B8%8E%E6%96%B0%E5%9F%BA%E5%BB%BA/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>钱不是央行印出来的，而是银行通过部分准备金制度&quot;一房十卖&quot;的货币乘数创造的：存款反复放贷使100万变成1000万，货币创造依赖借款人能正常还款；如今城投隐性债还不上，央行印钱发国债只在银行体系内还债而未流入市场，居民还在提前还贷，故出现&quot;钱越多越通缩&quot;，当前对新基建（数据中心、工业互联网、绿色能源）的转向同样是投入大、回报不确定。</p>
+    </div>
+    <a href="/myweb/posts/%E8%B4%A7%E5%B8%81%E4%B9%98%E6%95%B0%E4%B8%8E%E6%96%B0%E5%9F%BA%E5%BB%BA/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E8%B4%A7%E5%B8%81%E5%88%9B%E9%80%A0%E4%B8%8E%E6%96%B0%E5%9F%BA%E5%BB%BA/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>货币并非全靠央行印刷，而是银行通过部分准备金和货币乘数&quot;一房十卖&quot;重复创造出来的；当地方隐性债还不上、货币创造链条断裂，央行放的水只会在银行体系内借新还旧，反而出现&quot;上面钱越多、下面越通缩&quot;的局面，而新基建（数据中心、工业互联网、绿色能源）投入大、回报不确定，长期效果存疑。</p>
+    </div>
+    <a href="/myweb/posts/%E8%B4%A7%E5%B8%81%E5%88%9B%E9%80%A0%E4%B8%8E%E6%96%B0%E5%9F%BA%E5%BB%BA/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+    </section>
+    
+		<ul class="pagination pagination-default">
+			<li class="page-item">
+				<a href="/myweb/posts/" aria-label="First" class="page-link" role="button"><span aria-hidden="true">&laquo;&laquo;</span></a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/posts/page/9/" aria-label="Previous" class="page-link" role="button"><span aria-hidden="true">&laquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/8/" aria-label="Page 8" class="page-link" role="button">8</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/9/" aria-label="Page 9" class="page-link" role="button">9</a>
+			</li>
+			<li class="page-item active">
+				<a aria-current="page" aria-label="Page 10" class="page-link" role="button">10</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/11/" aria-label="Page 11" class="page-link" role="button">11</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/12/" aria-label="Page 12" class="page-link" role="button">12</a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/posts/page/11/" aria-label="Next" class="page-link" role="button"><span aria-hidden="true">&raquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/13/" aria-label="Last" class="page-link" role="button"><span aria-hidden="true">&raquo;&raquo;</span></a>
+			</li>
+		</ul></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

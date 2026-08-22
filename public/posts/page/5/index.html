@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head><script src="/myweb/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=myweb/livereload" data-no-instant defer></script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    
+    <title>Posts | Gourney Of oG-Go</title>
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+    <meta name="description" content="My Web">
+    <meta name="generator" content="Hugo 0.164.0">
+    
+    
+    
+      <meta name="robots" content="noindex, nofollow">
+    
+    
+
+    <link rel="stylesheet" href="/myweb/ananke/css/main.css">
+    <script>
+  (function () {
+    "use strict";
+
+    
+    
+    function revealButtons() {
+      var buttons = document.querySelectorAll(".code-block .code-copy[hidden]");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].hidden = false;
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealButtons);
+    } else {
+      revealButtons();
+    }
+
+    function flash(button) {
+      var label = button.querySelector(".code-copy-label");
+      var previous = label ? label.textContent : null;
+      button.classList.add("is-copied");
+      if (label) label.textContent = "Copied";
+      window.setTimeout(function () {
+        button.classList.remove("is-copied");
+        if (label && previous !== null) label.textContent = previous;
+      }, 2000);
+    }
+
+    function legacyCopy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "absolute";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function copyFrom(button) {
+      var container = button.closest(".code-block");
+      if (!container) return;
+      var pre = container.querySelector("pre");
+      if (!pre) return;
+      var source = pre.querySelector("code") || pre;
+      var text = source.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(button); },
+          function () { if (legacyCopy(text)) flash(button); }
+        );
+      } else if (legacyCopy(text)) {
+        flash(button);
+      }
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".code-copy");
+      if (button) copyFrom(button);
+    });
+  })();
+</script>
+
+    
+      
+
+    
+
+    
+    
+      <link href="/myweb/posts/index.xml" rel="alternate" type="application/rss+xml" title="Gourney Of oG-Go" />
+      <link href="/myweb/posts/index.xml" rel="feed" type="application/rss+xml" title="Gourney Of oG-Go" />
+      
+    
+
+    
+      <link rel="canonical" href="http://localhost:1313/myweb/posts/">
+    
+
+    
+    
+    <meta property="og:url" content="http://localhost:1313/myweb/posts/">
+	<meta property="og:site_name" content="Gourney Of oG-Go">
+	<meta property="og:title" content="Posts">
+	<meta property="og:description" content="My Web">
+	<meta property="og:locale" content="en_us">
+	<meta property="og:type" content="website">
+
+	<meta itemprop="name" content="Posts">
+	<meta itemprop="description" content="My Web">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Posts">
+	<meta name="twitter:description" content="My Web">
+
+	
+
+
+  
+  <link
+    rel="stylesheet"
+    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
+    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
+  >
+
+  </head><body class="ma0 avenir bg-near-white development is-section is-section">
+
+  <header>
+    <div class="pb3-m pb6-l bg-black">
+      <nav class="pv3 ph3 ph4-ns" role="navigation">
+  <div class="flex-l center items-center justify-between">
+    <a href="/myweb/" class="f3 fw2 hover-white white-90 dib no-underline">
+      
+        Gourney Of oG-Go
+      
+    </a>
+    <div class="flex-l items-center">
+      
+
+      
+        <ul class="pl0 mr3">
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/technology/" title="Technology page">
+              Technology
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/ai/" title="AI page">
+              AI
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/life/" title="Life page">
+              Life
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/posts/" title="Posts page">
+              Posts
+            </a>
+          </li>
+          
+          <li class="list f5 f4-ns fw4 dib pr3">
+            <a class="hover-white white-90 no-underline" href="/myweb/about/" title="About page">
+              About
+            </a>
+          </li>
+          
+        </ul>
+      
+      <div class="ananke-socials"></div>
+
+    </div>
+  </div>
+</nav>
+
+      
+      <div class="tc-l pv3 ph3 ph4-ns">
+        <h1 class="f2 f-subheadline-l fw2 light-silver mb0 lh-title">
+          Posts
+        </h1>
+        
+      </div>
+    </div>
+  </header>
+
+<main class="pb7" role="main">
+  
+  
+
+  <article class="pa3 pa4-ns nested-copy-line-height">
+    <section class="cf ph3 ph5-l pv3 pv4-l f4 tc-l center measure-wide lh-copy nested-links mid-gray"></section>
+    <section class="flex-ns mt5 flex-wrap justify-around">
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%A4%AE%E8%A1%8C%E6%8A%B5%E6%8A%BC%E7%89%A9%E5%8F%98%E8%BF%81/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>央行货币发行的抵押物历经美元（外贸）、房地产到国债+科技的三次切换，每次切换都对应一轮造富风口；当前AI上游企业盈利依赖中下游尚未验证的需求，历史经验表明科技从投入到盈利需10年以上周期，爆发点在中下游而非上游。</p>
+    </div>
+    <a href="/myweb/posts/%E5%A4%AE%E8%A1%8C%E6%8A%B5%E6%8A%BC%E7%89%A9%E5%8F%98%E8%BF%81/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%A4%AE%E8%A1%8C%E9%99%8D%E6%81%AF/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>此次降息降的是7天逆回购利率（首次取代MLF成为政策利率），传导仅需7天；但CPI、PPI双负暴露通缩，4月社融中地方债占83%而企业与个人贷款同比大降61%，降息实质利好地方债和基建；受中美3%利差和汇率约束，零利率须等美联储降息或美元单独贬值——对普通人而言，还房贷依然是最好的理财。</p>
+    </div>
+    <a href="/myweb/posts/%E5%A4%AE%E8%A1%8C%E9%99%8D%E6%81%AF/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%A7%94%E5%86%85%E7%91%9E%E6%8B%89%E7%9F%B3%E6%B2%B9%E5%B4%A9%E5%A1%8C/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>委内瑞拉的崩溃证明：失去民心的政权军队再强也守不住，而赶走外资、石油国有化导致产量从350万桶暴跌至90万桶，叠加印钞超发使货币贬值170万%，存款清零。美控制委国后，石油、天然气和贵金属供给将大增，长期压低油价冲击俄罗斯，而贵金属价格最终仍取决于AI应用能否落地。</p>
+    </div>
+    <a href="/myweb/posts/%E5%A7%94%E5%86%85%E7%91%9E%E6%8B%89%E7%9F%B3%E6%B2%B9%E5%B4%A9%E5%A1%8C/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%AE%8F%E8%A7%82%E7%BB%8F%E6%B5%8E%E5%88%86%E6%9E%90%E6%80%BB%E7%BB%93-20260816/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <h1 id="宏观经济与市场分析总结2026年8月16日-两份智能纪要">宏观经济与市场分析总结（2026年8月16日 两份智能纪要）</h1>
+<blockquote>
+<p>来源文档：</p>
+<ol>
+<li>《智能纪要：宏观经济与市场现象分析 2026年8月16日》（晚间场 19:56–22:40）</li>
+<li>《智能纪要：宏观经济与市场走势分析 2026年8月16日》（早间场 08:51–12:51）</li>
+</ol>
+</blockquote>
+<hr>
+<h2 id="一文档一宏观经济与市场现象分析段落总结">一、文档一：宏观经济与市场现象分析（段落总结）</h2>
+<h3 id="1-货币政策失效与银行体系危机">1. 货币政策失效与银行体系危机</h3>
+<ul>
+<li>当前降息、降准等货币政策效果失灵，核心症结在银行体系：银行净息差已降至 <strong>1.54%</strong>，而不良贷款率约 1.56% + 人员成本约 0.3%，意味着银行每放一笔贷款<strong>净亏损 0.32%</strong>，银行丧失放贷意愿。</li>
+<li>银行不敢贷款→企业拿不到钱→经济活力下降，形成&quot;货币政策传导链条断裂&quot;。</li>
+<li>房地产救市政策（降低首付、放开限购等）连续出台但效果不佳，因为问题不在需求端而在银行端的资产负债表恶化。</li>
+</ul>
+<h3 id="2-四万亿的反向操作与中央加杠杆">2. 四万亿的&quot;反向操作&quot;与中央加杠杆</h3>
+<ul>
+<li>2008 年四万亿是&quot;中央出 30%、地方出 70%&quot;，地方通过城投公司以土地为抵押大规模举债，埋下地方隐性债务隐患。</li>
+<li>本轮刺激改为<strong>央行直接发行国债</strong>（中央加杠杆），绕开地方债务扩张的老路。</li>
+<li>地方隐性债务总量估计 <strong>60–68 万亿</strong>，来源于城投公司以土地抵押向银行借款，土地价格下跌后抵押物缩水，形成系统性风险。</li>
+</ul>
+<h3 id="3-通胀三阶段推演">3. 通胀三阶段推演</h3>
+<ul>
+<li>第一阶段：<strong>化债</strong>——通过债务置换、展期降低利息负担；</li>
+<li>第二阶段：<strong>拼经济</strong>——地方政府为完成 GDP 目标重启基建投资；</li>
+<li>第三阶段：<strong>货币贬值 / 输入性通胀</strong>——货币超发最终传导至物价，持有现金者被&quot;稀释&quot;。</li>
+</ul>
+<h3 id="4-日美贸易战的历史镜鉴">4. 日美贸易战的历史镜鉴</h3>
+<ul>
+<li>1957 年日本&quot;一美元衬衫&quot;冲击美国纺织业 → 1985 年广场协议（日元升值）→ 1986 年美国对日征收 100% 关税 → 1990 年日本泡沫破裂。</li>
+<li>核心教训：贸易战的终点不是关税本身，而是<strong>汇率与资产泡沫</strong>；对当下的中美博弈有直接参照意义。</li>
+</ul>
+<h3 id="5-沃尔克时刻与僵尸企业出清">5. 沃尔克时刻与&quot;僵尸企业&quot;出清</h3>
+<ul>
+<li>1980 年美联储主席保罗·沃尔克将利率提高到 20%，以衰退为代价清除僵尸企业，为后续里根时期的技术繁荣（PC 革命）铺路。</li>
+<li>当前美联储主席人选凯文·沃尔什主张&quot;降息 + 缩表&quot;组合，被视为&quot;沃尔克式出清&quot;的现代翻版。</li>
+</ul>
+<h3 id="6-万科分析与房地产个案">6. 万科分析与房地产个案</h3>
+<ul>
+<li>万科作为混合所有制房企样本：债务结构、表外负债、销售回款恶化路径被逐一拆解，说明头部房企也难逃行业性收缩。</li>
+<li><strong>银行直供房</strong>出现：银行绕开法院拍卖，直接处置断供抵押房产，说明法拍房供给已大到司法系统消化不了。</li>
+</ul>
+<h3 id="7-日本失去三十年的真相">7. 日本&quot;失去三十年&quot;的真相</h3>
+<ul>
+<li>日本海外资产约 <strong>9 万亿美元</strong>，每年约 <strong>3300 亿美元</strong>净利润回流本土，日本并非真正衰落，而是完成了从&quot;贸易立国&quot;到&quot;投资立国&quot;的转型。</li>
+<li>对中国的启示：本币贬值周期中，鼓励企业出海投资、以海外利润反哺国内，是对冲国内通缩的可行路径。</li>
+</ul>
+<hr>
+<h2 id="二文档二宏观经济与市场走势分析段落总结">二、文档二：宏观经济与市场走势分析（段落总结）</h2>
+<h3 id="1-人民币货币锚的三次切换">1. 人民币货币锚的三次切换</h3>
+<ul>
+<li><strong>2008 年以前</strong>：以美元外汇储备为锚（外贸盈余时代）；</li>
+<li><strong>2008–2022 年</strong>：以房地产贷款为锚（土地财政 + 按揭创造货币）；</li>
+<li><strong>2022 年以后</strong>：转向<strong>黄金 + A 股 + 国债</strong>为新锚。央行购金、国家队买 A 股、国债成为基础货币投放的新抵押品。</li>
+</ul>
+<h3 id="2-ai-技术周期与货币周期理论">2. AI 技术周期与货币周期理论</h3>
+<ul>
+<li>货币宽松总是<strong>先于</strong>技术落地：钱先印出来，押注下一代技术平台。</li>
+<li>历史规律：当技术真正兑现利润时黄金崩盘——1982 年 PC、2012 年互联网（黄金大熊市）；当前 AI 是被押注的下一代技术，若 AI 兑现利润则黄金见顶，若失败则黄金继续上行。</li>
+</ul>
+<h3 id="3-黄金--实际利率的反向代理">3. 黄金 = 实际利率的反向代理</h3>
+<ul>
+<li>黄金价格 ≈ 银行利率 − 通胀指数 的镜像：实际利率为负→黄金牛市；实际利率转正→黄金承压。</li>
+<li>委内瑞拉崩溃案例：货币超发 + 单一石油依赖 + 无技术产能→恶性通胀与国家破产，作为反面教材。</li>
+</ul>
+<h3 id="4-房价底部估值公式">4. 房价底部估值公式</h3>
+<ul>
+<li><strong>住宅</strong>：年租金 ÷ 2.35% × 0.9</li>
+<li><strong>商铺</strong>：年租金 ÷ 2.35% × 0.7</li>
+<li>即以租金回报率 2.35% 为锚倒推合理房价，判断当前房价是否到达底部。</li>
+</ul>
+<h3 id="5-etf-与机构操纵">5. ETF 与机构操纵</h3>
+<ul>
+<li>窄基指数 ETF 成为收割工具：机构通过操纵成分股股价，推高个股市值使其&quot;进指数&quot;，再借指数基金被动买入接盘。</li>
+</ul>
+<h3 id="6-买断式逆回购">6. 买断式逆回购</h3>
+<ul>
+<li>央行新型流动性工具：与传统质押式逆回购不同，<strong>买断式</strong>可真正买断风险资产（地方债、企业债），相当于央行直接承接风险资产、绕道化债。</li>
+</ul>
+<h3 id="7-汇率操控与货币乘数">7. 汇率操控与货币乘数</h3>
+<ul>
+<li>人民币汇率通过<strong>外汇掉期交易（远期合约）+ 同业存单</strong>的组合操作吸引外资、稳定汇率，即&quot;利率平价&quot;的人为维持。</li>
+<li>货币乘数：7% 存款准备金率下，银行体系通过反复放贷 theoretically 放大约 14 倍，基础货币的扩张依赖信贷意愿。</li>
+</ul>
+<h3 id="8-美国稳coin与大美丽法案">8. 美国稳coin与&quot;大美丽法案&quot;</h3>
+<ul>
+<li>稳定币发行方被要求持有等额美债→稳定币成为美债的新需求方，美元 digital 化扩表。</li>
+<li>中美贸易战筹码互换：中国稀土 vs 美国乙烷，双方各有命门，全面脱钩不可能。</li>
+</ul>
+<h3 id="9-债转股与-gdp-统计口径切换">9. 债转股与 GDP 统计口径切换</h3>
+<ul>
+<li>债转股：利用股市上涨化解银行坏账，牛市本身成为化债工具。</li>
+<li>GDP 统计从<strong>成本法</strong>切换到<strong>租金法</strong>：自有住房按虚拟租金计入 GDP，可一次性&quot;做高&quot;GDP、降低债务率（债务/GDP 分母变大）。</li>
+</ul>
+<h3 id="10-日本-qe通缩机制与俄美对照">10. 日本 QE、通缩机制与俄、美对照</h3>
+<ul>
+<li>日本 QE 的通缩机制：印钞→买债→银行不敢放贷→货币滞留银行体系→物价不涨。</li>
+<li>俄罗斯 19% 高利率：为抑制卢布贬值与战时通胀付出的代价。</li>
+<li>美联储独立性之争；最终落到中国&quot;适度宽松的货币政策&quot;的定调与后续空间。</li>
+</ul>
+<hr>
+<h2 id="三两份文档的核心概念与逻辑总结">三、两份文档的核心概念与逻辑总结</h2>
+<h3 id="一贯穿两场的核心概念图谱">（一）贯穿两场的核心概念图谱</h3>
+<table>
+	<thead>
+			<tr>
+					<th>核心概念</th>
+					<th>一句话定义</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>货币锚切换</td>
+					<td>人民币之锚从美元→房贷→&ldquo;黄金+A股+国债&rdquo;</td>
+			</tr>
+			<tr>
+					<td>银行净息差危机</td>
+					<td>1.54% 息差 &lt; 不良率+运营成本，放贷即亏损</td>
+			</tr>
+			<tr>
+					<td>化债三段论</td>
+					<td>化债→拼经济→货币贬值/输入性通胀</td>
+			</tr>
+			<tr>
+					<td>沃尔克时刻</td>
+					<td>高利率出清僵尸企业，为技术周期让路</td>
+			</tr>
+			<tr>
+					<td>黄金=实际利率镜像</td>
+					<td>利率−通胀差为负则金价涨</td>
+			</tr>
+			<tr>
+					<td>技术周期货币律</td>
+					<td>印钞押注新技术，技术兑现利润则黄金崩</td>
+			</tr>
+			<tr>
+					<td>买断式逆回购</td>
+					<td>央行买断风险资产，直接承接地方债</td>
+			</tr>
+			<tr>
+					<td>债转股</td>
+					<td>用牛市化解银行坏账</td>
+			</tr>
+			<tr>
+					<td>房价底部公式</td>
+					<td>年租金÷2.35%×0.9（住宅）/×0.7（商铺）</td>
+			</tr>
+			<tr>
+					<td>货币乘数</td>
+					<td>7% 准备金率下信贷的派生扩张机制</td>
+			</tr>
+			<tr>
+					<td>稳定币锚定美债</td>
+					<td>稳定币发行=美债新需求，美元数字化扩表</td>
+			</tr>
+			<tr>
+					<td>GDP 口径切换</td>
+					<td>成本法→租金法，做大分母降债务率</td>
+			</tr>
+	</tbody>
+</table>
+<h3 id="二统一逻辑主线">（二）统一逻辑主线</h3>
+<p>两场分享共用一个分析框架，可归纳为一条因果链：</p>
+    </div>
+    <a href="/myweb/posts/%E5%AE%8F%E8%A7%82%E7%BB%8F%E6%B5%8E%E5%88%86%E6%9E%90%E6%80%BB%E7%BB%93-20260816/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%AE%9E%E9%99%85%E5%88%A9%E6%81%AF%E4%B8%8E%E9%BB%84%E9%87%91/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>黄金的本质是实际利息（银行利息减通胀）的对立面，呈跷跷板关系：实际利息越低说明钱越多，黄金越涨。土地抵押物缩水倒逼央行连续买入黄金抬高抵押物价值，再借买断式逆回购放水维持地方债；全球实际利息同步走低、各国央行持续增持，只要房地产不回升，央行购金托底股市与地方债的逻辑就不会变。</p>
+    </div>
+    <a href="/myweb/posts/%E5%AE%9E%E9%99%85%E5%88%A9%E6%81%AF%E4%B8%8E%E9%BB%84%E9%87%91/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%B1%85%E6%B0%91%E5%AD%98%E6%AC%BE%E4%B8%8E%E5%9B%BD%E5%80%BA/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>银行以更高利率（2.65%-3.27%）抢购居民存款换来的超长期国债、赚取利差，国家将这笔钱用于收购商品房去库存和缓解地方债压力；因动用的是存量存款、未新增货币，短期不引发通胀，且30-50年的超长发行周期也会稀释远期通胀的感知。</p>
+    </div>
+    <a href="/myweb/posts/%E5%B1%85%E6%B0%91%E5%AD%98%E6%AC%BE%E4%B8%8E%E5%9B%BD%E5%80%BA/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E5%B9%BF%E5%9C%BA%E5%8D%8F%E8%AE%AE%E5%90%AF%E7%A4%BA%E4%B8%8E%E5%86%85%E9%9C%80/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>1985年广场协议后日本接受了货币升值（日元翻倍引发股市楼市泡沫）加100%关税的双重打击，其出路是技术/资金入股当地企业（丰田、康师傅等持股模式）规避贸易战；而我们选择对等反制令人民币独贬，资金外流与日本路径相反——贸易战的本质是美国内部分配问题（居民收入占GDP仅40% vs 美国70%，制造业岗位流失700万而华尔街与公务员群体受益），提高普通人消费能力才是破局根本。</p>
+    </div>
+    <a href="/myweb/posts/%E5%B9%BF%E5%9C%BA%E5%8D%8F%E8%AE%AE%E5%90%AF%E7%A4%BA%E4%B8%8E%E5%86%85%E9%9C%80/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E6%88%98%E4%BA%89%E4%B8%8E%E9%BB%84%E9%87%91/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>战争引发避险抛售美债推高收益率，实际利率上升导致黄金下跌而非上涨；去年全球实际利率趋近于零推动金价暴涨至5500美元，美伊战争逆转通胀预期使实际利率回升、金价跌回4400美元；川普在10年期美债收益率触及4.45%时必释放利好以遏制加息。</p>
+    </div>
+    <a href="/myweb/posts/%E6%88%98%E4%BA%89%E4%B8%8E%E9%BB%84%E9%87%91/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E6%88%BF%E4%BB%B7%E4%B8%8E%E5%9C%9F%E5%9C%B0%E5%B8%82%E5%9C%BA/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>土地市场火热的背后是&quot;城投退出、央企介入&quot;的财政逻辑：城投拿地抵押融资的隐性债模式已被叫停，央企高价拿地再由地方专项债回收，实为以低息显性债替代高息隐性债给地方财政输血。真实城市化率已超76%，靠城市化推房价的时代结束；房价能否企稳取决于收入与房价的匹配，二手房降价正是房价主动去追收入的过程。</p>
+    </div>
+    <a href="/myweb/posts/%E6%88%BF%E4%BB%B7%E4%B8%8E%E5%9C%9F%E5%9C%B0%E5%B8%82%E5%9C%BA/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+        <div class="w-100 w-30-l mb4 relative bg-white">
+          
+<div class="w-100 mb4 nested-copy-line-height relative bg-white">
+  <div class="mb3 pa4 gray overflow-hidden bg-white">
+    <span class="f6 db">Posts</span>
+    
+    <h1 class="f3 near-black">
+      <a href="/myweb/posts/%E6%88%BF%E4%BB%B7%E4%B8%8E%E7%9F%B3%E6%B2%B9%E6%88%98%E4%BA%89/" class="link black dim">
+        
+      </a>
+    </h1>
+    <div class="nested-links f5 lh-copy nested-copy-line-height">
+      <p>房价本质是外贸收入的抵押品，2018年贸易战致对美出口骤降令房价见顶；中东战争推高油价传导至全产业链成本，在人民币无法贬值对冲的情况下企业只能压缩人力支出，房价与收入同步以价换量，油价不降则房市难起。</p>
+    </div>
+    <a href="/myweb/posts/%E6%88%BF%E4%BB%B7%E4%B8%8E%E7%9F%B3%E6%B2%B9%E6%88%98%E4%BA%89/" class="ba b--moon-gray bg-light-gray br2 color-inherit dib f7 hover-bg-moon-gray link mt2 ph2 pv1">read more</a>
+  </div>
+</div>
+
+        </div>
+      
+    </section>
+    
+		<ul class="pagination pagination-default">
+			<li class="page-item">
+				<a href="/myweb/posts/" aria-label="First" class="page-link" role="button"><span aria-hidden="true">&laquo;&laquo;</span></a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/posts/page/4/" aria-label="Previous" class="page-link" role="button"><span aria-hidden="true">&laquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/3/" aria-label="Page 3" class="page-link" role="button">3</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/4/" aria-label="Page 4" class="page-link" role="button">4</a>
+			</li>
+			<li class="page-item active">
+				<a aria-current="page" aria-label="Page 5" class="page-link" role="button">5</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/6/" aria-label="Page 6" class="page-link" role="button">6</a>
+			</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/7/" aria-label="Page 7" class="page-link" role="button">7</a>
+			</li>
+		<li class="page-item">
+			<a href="/myweb/posts/page/6/" aria-label="Next" class="page-link" role="button"><span aria-hidden="true">&raquo;</span></a>
+		</li>
+			<li class="page-item">
+				<a href="/myweb/posts/page/13/" aria-label="Last" class="page-link" role="button"><span aria-hidden="true">&raquo;&raquo;</span></a>
+			</li>
+		</ul></article>
+</main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
+  <div class="flex justify-between">
+  <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >
+    &copy;  Gourney Of oG-Go 2026 
+  </a>
+    <div><div class="ananke-socials"></div>
+</div>
+  </div>
+</footer>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
