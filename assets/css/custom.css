@@ -190,3 +190,28 @@
   }
 
 }
+
+
+
+
+/* 提升选择器权重（加 body 前缀），强制重写 Ananke 主题在 960px (>60em) 断点下的限制 */
+body .mw7,
+body .mw8,
+body .mw9,
+body .mw7-l,
+body .mw8-l {
+    max-width: 1200px !important; /* 修改为你想要的宽度 */
+}
+
+/* 消除 >960px 时正文被强制压缩为 66% 宽度的限制 */
+@media screen and (min-width: 60em) {
+    body .w-two-thirds-l {
+        width: 100% !important;
+    }
+    body article, 
+    body main, 
+    body .nested-copy-line-height {
+        max-width: 1200px !important;
+        width: 100% !important;
+    }
+}

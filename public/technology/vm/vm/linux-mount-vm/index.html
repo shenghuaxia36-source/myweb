@@ -154,18 +154,30 @@ lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创�
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="Linux 创建分区挂载数据盘 架构图 Copyflowchart TDsubgraph DISK[&#34;新数据盘 /dev/sdb (500 GiB)&#34;]P[&#34;分区 /dev/sdb1&#34;]FS[&#34;文件系统 ext4 (或 xfs)&#34;]P --- FSendMKDIR[&#34;mkdir /data&#34;] --&gt; MOUNT[&#34;mount /dev/sdb1 /data&#34;]FS --&gt; MOUNTMOUNT --&gt; DF[&#34;df -h 验证&lt;br/&gt;/dev/sdb1 463G → /data&#34;]FSTAB[&#34;vi /etc/fstab&lt;br/&gt;UUID=xxx /data ext4 defaults 0 2&#34;] --&gt; MA[&#34;mount -a 测试开机自动挂载&#34;]BLKID[&#34;blkid /dev/sdb1&lt;br/&gt;获取 UUID&#34;] --&gt; FSTAB摘要 /dev/sdb1 463G /data 说明是一个独立的数据盘分区，与系统盘 /dev/sda（LVM &#43; /boot &#43; EFI 分区）分开。 标准创建流程：添加第二块磁盘 → fdisk 创建分区 → mkfs 格式化 → mkdir 挂载点 → mount 手动挂载 → 写入 /etc/fstab 实现开机自动挂载。 用 lsblk -f 查看真实结构：sda 含 /boot/efi、/boot、LVM(ubuntu-lv → /)；sdb1 ext4 挂载 /data。 用 blkid /dev/sdb1 获取分区 UUID，与 cat /etc/fstab 中的条目对应，即可确认挂载由谁创建。 463G 而非 500G 是正常现象：厂商标称 500 GB = 500,000,000,000 Bytes，换算成 GiB ≈ 465，再扣除文件系统开销后约 463G，实际就是一块标准 500GB 数据盘。 技术要点 查看磁盘与分区结构：lsblk -f 可同时看到设备、文件系统类型和挂载点；fdisk -l 查看磁盘容量（Disk /dev/sdb: 500 GiB）。 fdisk 创建分区操作序列：n（新建分区）→ p（主分区）→ 1（分区号 1）→ w（写入），生成 /dev/sdb1。 格式化文件系统：mkfs.ext4 /dev/sdb1（或 mkfs.xfs /dev/sdb1，CentOS/RHEL 常用 xfs）。 手动挂载：mkdir /data 后 mount /dev/sdb1 /data，用 df -h 验证出现 /dev/sdb1 463G ... /data。 开机自动挂载：编辑 /etc/fstab，推荐使用 UUID 写法 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /data ext4 defaults 0 2（也可用设备路径 /dev/sdb1 /data ext4 defaults 0 2）。 修改 fstab 后务必执行 mount -a 测试无报错，避免重启后因配置错误进入紧急模式。 确认挂载来源：cat /etc/fstab 查看 UUID 条目，blkid /dev/sdb1 查看实际 UUID，两者对应即知该挂载的创建方式。 容量换算：500 GB（十进制）÷ 1024³ ≈ 465 GiB，扣除文件系统元数据开销后显示 463G 属正常。 lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创建、后期新增的数据盘，还是从旧服务器迁移过来的挂载。 原文内容 你这个 /data 挂载（/dev/sdb1 /data 463G）说明是一个独立的数据盘分区，与系统盘 /dev/sda 分开。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-linux-mount-VM">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-linux-mount-VM">
   
 
 
@@ -227,21 +239,17 @@ lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创�
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-linux-mount-VM flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="linux-创建分区挂载数据盘">Linux 创建分区挂载数据盘</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="linux-创建分区挂载数据盘">Linux 创建分区挂载数据盘</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -446,14 +454,8 @@ lsblk -f &#43; cat /etc/fstab 组合可直接判断 /data 是安装系统时创�
 <li>后期新增的数据盘；</li>
 <li>还是从旧服务器迁移过来的挂载。</li>
 </ul>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

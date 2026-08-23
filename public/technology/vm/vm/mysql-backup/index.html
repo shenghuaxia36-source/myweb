@@ -154,18 +154,30 @@ MySQL 常用备份命令如下。">
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="MySQL 备份 架构图 Copyflowchart TDsubgraph VM[&#34;Ubuntu VM (mysql-repli / mysql-master)&#34;]SYS[&#34;系统盘&lt;br/&gt;/dev/mapper/ubuntu--vg-ubuntu--lv&lt;br/&gt;38G → /&#34;]DATA[&#34;数据盘 /dev/sdb1 442G → /data&#34;]CONF[&#34;/etc/mysql/mysql.conf.d/mysqld.cnf&lt;br/&gt;datadir = /data/oa_mysql/data/&#34;]SYSTEMD[&#34;systemd: mysql.service&lt;br/&gt;&#43; override.conf&lt;br/&gt;--skip-grant-tables --skip-networking&#34;]CRON[&#34;crontab 每天 02:00&lt;br/&gt;mysqldump --single-transaction | gzip&#34;]CRON --&gt; DUMP[&#34;/data/backup/mydb_YYYY-MM-DD.sql.gz&#34;]endDATA --- CONF --- SYSTEMD摘要 汇总 mysqldump 常用 12 类备份命令：单库/多库/全库备份、备份并压缩、仅表结构/仅数据、单表备份、InnoDB 推荐热备参数、查看库大小、恢复、定时备份、MySQL 8.0 大库方案。 InnoDB 生产环境推荐：mysqldump --single-transaction --routines --triggers --events，实现不锁表热备并包含存储过程、触发器和事件。 定时备份示例：crontab 每天 2 点执行 mysqldump &#43; gzip 压缩，落盘 /data/backup/。 几十 GB 以上大库推荐改用 xtrabackup：速度更快、真正热备、支持增量备份、恢复速度更高。 实机记录（mysql-repli）：datadir 在 /data/oa_mysql/data/（/dev/sdb1 442G 数据盘，已用 31G）；systemd 存在 override.conf，以 --skip-grant-tables --skip-networking 启动（密码恢复用途，属临时状态）。 技术要点 备份单库：mysqldump -u root -p mydb &gt; mydb.sql；多库加 --databases db1 db2 db3；全库加 --all-databases。 备份并压缩（推荐）：mysqldump -u root -p mydb | gzip &gt; mydb.sql.gz；恢复用 gunzip &lt; mydb.sql.gz | mysql -u root -p mydb。 仅表结构 --no-data；仅数据 --no-create-info；单表 mysqldump -u root -p mydb users &gt; users.sql。 InnoDB 热备参数：--single-transaction（热备份不锁表）、--routines（存储过程）、--triggers（触发器）、--events（事件）。 查看数据库大小：查询 information_schema.tables，按 table_schema 汇总 data_length&#43;index_length。 恢复流程：先 CREATE DATABASE mydb; 再 mysql -u root -p mydb &lt; mydb.sql。 定时备份 crontab：0 2 * * * mysqldump -u root -p&#39;Password&#39; --single-transaction mydb | gzip &gt; /data/backup/mydb_$(date &#43;\%F).sql.gz。 MySQL 8.0 大型数据库（几十 GB 到上百 GB）推荐 xtrabackup 而非 mysqldump –single-transaction。 systemctl cat mysql 可查看 systemd 单元及 override 片段；systemctl show -p FragmentPath mysql 定位主配置文件路径。 当前 mysql-repli 的 /etc/systemd/system/mysql.service.d/override.conf 将启动命令覆盖为 mysqld --skip-grant-tables --skip-networking，属于跳过授权表的维护模式，事后应移除。 原文内容 MySQL 常用备份命令如下。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-backup">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-backup">
   
 
 
@@ -227,21 +239,17 @@ MySQL 常用备份命令如下。">
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-mysql-backup flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="mysql-备份">MySQL 备份</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="mysql-备份">MySQL 备份</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -482,14 +490,8 @@ MySQL 常用备份命令如下。">
 </span></span><span style="display:flex;"><span><span style="color:#f92672">[</span>Service<span style="color:#f92672">]</span>
 </span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>
 </span></span><span style="display:flex;"><span>ExecStart<span style="color:#f92672">=</span>/usr/sbin/mysqld --skip-grant-tables --skip-networking</span></span></code></pre></div>
-  </div><ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+  </div></div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

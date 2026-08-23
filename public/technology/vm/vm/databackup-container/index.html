@@ -156,18 +156,30 @@ Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢�
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="虚机中容器数据的备份 架构图 Copyflowchart TDsubgraph HV[&#34;Hyper-V&#34;]subgraph VM[&#34;Ubuntu VM 10.10.10.22&#34;]subgraph DOCK[&#34;Docker&#34;]PG[&#34;PostgreSQL Container&lt;br/&gt;172.17.0.2&#34;]VOL[&#34;Volume 挂载&lt;br/&gt;/data/postgres:&lt;br/&gt;/var/lib/postgresql/data&#34;]PG --- VOLendBK[&#34;/backup/postgres/&lt;br/&gt;dbname_YYYY-MM-DD.sql&#34;]DUMP[&#34;docker exec postgres pg_dump&lt;br/&gt;(重定向由 VM Shell 完成)&#34;]PG --&gt; DUMP --&gt; BKVOL --&gt; DATAVM[&#34;数据库文件实际落盘 VM 目录&#34;]endVEEAM[&#34;Veeam 备份整个 VM&#34;] -.-&gt;|整机恢复| VMVEEAM -.-&gt;|同时备份 SQL 文件| BKend摘要 pg_dump 备份文件落在哪里取决于执行位置：容器内执行会生成在容器内部（容器删除即丢失，不推荐）；宿主机执行时重定向由 Ubuntu Shell 负责，文件实际保存到 VM 目录（推荐做法）。 推荐命令：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql——pg_dump 在容器内运行，但 &gt; 重定向发生在 VM 上。 很多 PostgreSQL 容器通过 volume 挂载部署（/data/postgres:/var/lib/postgresql/data），数据库文件实际存放于 Ubuntu VM 目录，容器只是使用该目录；用 docker inspect postgres 查看 Mounts 部分即可确认。 Hyper-V &#43; Ubuntu VM &#43; 容器环境的推荐双层保障：每天生成逻辑备份到 /backup/postgres/（数据库级恢复），Veeam 只备份 VM（整机恢复），两层互补。 拓扑：pg_dump 从容器导出 → VM /backup/dbname.sql → Veeam 备份 VM 时同时备份 SQL 文件。 技术要点 场景1（容器内执行，不推荐）：docker exec -it postgres bash 后 pg_dump -U postgres dbname &gt; backup.sql，backup.sql 保存在容器内部（Container └─ /root/backup.sql），删除容器后备份也没了。 场景2（宿主机执行，推荐）：docker exec postgres pg_dump -U postgres dbname &gt; /backup/dbname_20260805.sql，pg_dump 在容器内运行，但重定向由 Ubuntu Shell 完成，文件保存到 VM。 场景3（Docker Volume）：compose 中 volumes: - /data/postgres:/var/lib/postgresql/data 时，数据实际在 Ubuntu VM 的 /data/postgres，docker inspect postgres 的 Mounts 显示 &#34;Source&#34;: &#34;/data/postgres&#34;, &#34;Destination&#34;: &#34;/var/lib/postgresql/data&#34;。 每日逻辑备份脚本：mkdir -p /backup/postgres &#43; docker exec postgres pg_dump -U postgres dbname &gt; /backup/postgres/dbname_$(date &#43;%F).sql。 Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢复 &#43; 数据库级恢复两层保障。 确认数据实际存放位置：docker inspect postgres | grep Source 或直接 docker inspect postgres 查看 “Mounts”，判断数据库文件在容器内部还是映射到 VM 目录。 原文内容 这取决于你在哪里执行 pg_dump 命令。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-databackup-container">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-databackup-container">
   
 
 
@@ -229,21 +241,17 @@ Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢�
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-databackup-container flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机中容器数据的备份">虚机中容器数据的备份</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="虚机中容器数据的备份">虚机中容器数据的备份</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -402,14 +410,8 @@ Veeam 备份 VM 的同时即备份了 /backup/postgres/*.sql，形成 VM 级恢�
     </button>
     <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker inspect postgres</span></span></code></pre></div>
   </div><p>查看 &ldquo;Mounts&rdquo; 部分，就能确定数据库数据是在容器内部，还是已经映射到 Ubuntu VM 的目录。</p>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

@@ -169,18 +169,30 @@ NAT 模式流量路径：VM → Host NAT（转换为 192.168.10.10）→ 192.168
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="Hyper-V 的三种虚机网络模式 架构图 Copyflowchart TBINET((&#34;Internet&#34;))subgraph FG[&#34;FortiGate 网关 192.168.10.1&#34;]DMZ[&#34;DMZ 网段: 192.168.10.0/24&#34;]endsubgraph HV[&#34;Hyper-V Host (NIC1: 192.168.10.10)&#34;]EXT[&#34;方案1 External Switch&lt;br/&gt;vSwitch-DMZ (桥接物理网卡)&lt;br/&gt;VM 直接使用 192.168.10.X&#34;]INT[&#34;方案2/3 Internal Switch&lt;br/&gt;vSwitch-LAN&lt;br/&gt;vEthernet: 172.10.0.1/24&#34;]NAT[&#34;方案3 NetNat&lt;br/&gt;HyperV-NAT&lt;br/&gt;172.10.0.0/24&#34;]INT --&gt; NATendINET --- DMZ --- HVsubgraph VMS[&#34;虚拟机&#34;]VM1[&#34;方案1 VM&lt;br/&gt;192.168.10.20&lt;br/&gt;GW 192.168.10.1&#34;]VM2[&#34;方案2 VM&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1 (Host 路由转发)&#34;]VM3[&#34;方案3 VM&lt;br/&gt;172.10.0.10&lt;br/&gt;GW 172.10.0.1 (Host NAT)&#34;]endEXT --- VM1INT --- VM2INT --- VM3摘要 Hyper-V 三种常见网络模式：桥接（External）、内部网络（Internal）、NAT 网络；前提假设物理网卡（DMZ）在 192.168.10.0/24 网段，Host 为 192.168.10.10。 方案1（External）：虚机直接使用 192.168.10.X，与 Host 同网段直接通信，配置最简单。 方案2（Internal &#43; 路由转发）：虚机使用 172.10.0.X，通过 Host 开启 IP Forwarding（或 RRAS）三层路由上网，但上级路由器（如 FortiGate）必须增加静态路由 172.10.0.0/24 → 192.168.10.10。 方案3（Internal &#43; NAT，实验环境最常用）：New-NetNat 创建 NAT，虚机经 Host NAT 上网，无需在 FortiGate 加路由，配置简单但外部无法主动访问 VM。 是否必须 NAT？不必须——有 FortiGate 时可开启 Host 路由 &#43; FortiGate 静态路由 &#43; FortiGate Policy 放行，即 Layer 3 Routing 方式，VM 真实 IP 对网络可见。 推荐原则：实验室/测试环境/少量 VM 用 Hyper-V NAT（配置简单）；企业环境/FortiGate 已管理所有网络用路由模式（双向访问、可审计、管理规范）。 技术要点 创建 External Switch：Virtual Switch Manager → New Virtual Network Switch → External，绑定 DMZ 物理网卡，命名 vSwitch-DMZ，勾选 “Allow management OS to share this network adapter”。 External 模式虚机 IP 配置：192.168.10.20 / 255.255.255.0 / GW 192.168.10.1，与 Host (192.168.10.10) 同网段直接互通。 创建 Internal Switch：Virtual Switch Manager → Internal，命名 vSwitch-LAN；创建后 Host 出现虚拟网卡 vEthernet(vSwitch-LAN)，配置 IP 172.10.0.1 / 255.255.255.0。 Internal 模式虚机配置：IP 172.10.0.10 / Mask 255.255.255.0 / GW 172.10.0.1 / DNS 8.8.8.8。 开启 Host 路由转发：Set-NetIPInterface -Forwarding Enabled，或启用 RRAS；配合 FortiGate 静态路由 172.10.0.0/24 via 192.168.10.10。 创建 NAT（PowerShell）：New-NetNat -Name HyperV-NAT -InternalIPInterfaceAddressPrefix 172.10.0.0/24，用 Get-NetNat 验证。 NAT 模式流量路径：VM → Host NAT（转换为 192.168.10.10）→ 192.168.10.1 网关 → Internet。 路由模式（Layer 3 Routing）流量路径：VM 172.10.0.10 → vSwitch-LAN 172.10.0.1 → Hyper-V Host 192.168.10.10 → Internet；回程依赖 FortiGate 静态路由。 选型判断：192.168.10.X 与 172.10.0.X 之间需要双向访问、审计和控制时选择路由模式；仅虚机上网需求选 NAT。 原文内容 这是 Hyper-V 很常见的三种网络模式：桥接(External)、内部网络(Internal)、NAT 网络。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-Hyper-V-3modes-for vm">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-Hyper-V-3modes-for vm">
   
 
 
@@ -242,21 +254,17 @@ NAT 模式流量路径：VM → Host NAT（转换为 192.168.10.10）→ 192.168
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-Hyper-V-3modes-for vm flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="hyper-v-的三种虚机网络模式">Hyper-V 的三种虚机网络模式</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="hyper-v-的三种虚机网络模式">Hyper-V 的三种虚机网络模式</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -479,14 +487,8 @@ NAT 模式流量路径：VM → Host NAT（转换为 192.168.10.10）→ 192.168
 </ul>
 <p>推荐：不用 NAT（路由转发）。</p>
 <p>这样 192.168.10.X 和 172.10.0.X 之间可以双向访问、审计和控制，管理更规范。</p>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

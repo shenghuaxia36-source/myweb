@@ -169,18 +169,30 @@ pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备�
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="带压缩的 MySQL 备份与恢复 架构图 Copyflowchart TBsubgraph 备份流程[&#34;备份流程（逻辑备份 &#43; 管道压缩）&#34;]A[(MySQL 数据库&lt;br/&gt;mydb)] --&gt; B[&#34;mysqldump&lt;br/&gt;--single-transaction&lt;br/&gt;--routines --triggers --events&#34;]B --&gt; C{&#34;压缩工具选择&#34;}C --&gt;|标准| D[&#34;gzip&#34;]C --&gt;|高压缩率| E[&#34;xz -9&#34;]C --&gt;|多核加速·推荐大库| F[&#34;pigz -9&#34;]D --&gt; G[(&#34;mydb_2026-08-06.sql.gz&lt;br/&gt;带时间戳命名&#34;)]E --&gt; H[(&#34;mydb.sql.xz&#34;)]F --&gt; Gendsubgraph 恢复流程[&#34;恢复流程（解压管道直接导入）&#34;]G --&gt; I[&#34;gunzip / pigz -dc&lt;br/&gt;流式解压（无需落盘中间文件）&#34;]H --&gt; J[&#34;xzcat&#34;]I --&gt; K[&#34;mysql -u root -p mydb&#34;]J --&gt; KK --&gt; L[(&#34;✅ 数据恢复完成&#34;)]endsubgraph 检查操作[&#34;备份文件检查&#34;]G -.-&gt; M[&#34;zcat mydb.sql.gz | head&lt;br/&gt;不解压查看内容&#34;]G -.-&gt; N[&#34;zcat | wc -l 统计行数&lt;br/&gt;ls -lh 查看大小&#34;]end摘要 mysqldump 通过 Unix 管道与压缩工具组合，实现边导出边压缩，无需中间未压缩文件 支持 gzip（标准）、xz -9（更高压缩率）、pigz（多核并行，大库推荐，速度明显快于 gzip） 恢复时用 gunzip &lt;、xzcat、pigz -dc 流式解压直接管道给 mysql，同样不产生中间文件 生产环境推荐参数组合：--single-transaction --routines --triggers --events 备份文件建议带时间戳命名（$(date &#43;%Y%m%d_%H%M%S)），便于管理和追溯 可用 zcat | head、zcat | wc -l、ls -lh 不解压检查压缩包内容和大小 技术要点 单库 gzip 备份：mysqldump -u root -p mydb | gzip &gt; mydb_$(date &#43;%F).sql.gz，导出流直接进 gzip 对应恢复：gunzip &lt; mydb_2026-08-06.sql.gz | mysql -u root -p mydb，解压流直接进 mysql 全库备份：--all-databases 备份所有数据库，恢复时不需要指定库名 xz -9 高压缩率：适合存储空间紧张的归档场景，恢复用 xzcat mydb.sql.xz | mysql pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备份、pigz -dc 恢复；相比 gzip，CPU 多核时速度明显更快，推荐大库使用 --single-transaction：InnoDB 热备份，不锁表 --routines / --triggers / --events：确保存储过程、函数、触发器、事件完整备份 时间戳命名：$(date &#43;%Y%m%d_%H%M%S) 生成如 mydb_20260806_164500.sql.gz 的文件名 不解压检查：zcat mydb.sql.gz | head 查看内容，zcat | wc -l 统计行数，ls -lh 查看文件大小 标准做法：mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz 是生产环境逻辑备份的标准做法 原文内容 常用的 mysqldump 备份并压缩命令如下。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-back-resotre-with-zip">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-mysql-back-resotre-with-zip">
   
 
 
@@ -242,21 +254,17 @@ pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备�
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-mysql-back-resotre-with-zip flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="带压缩的-mysql-备份与恢复">带压缩的 MySQL 备份与恢复</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="带压缩的-mysql-备份与恢复">带压缩的 MySQL 备份与恢复</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -426,14 +434,8 @@ pigz 多核压缩：yum install pigz 或 apt install pigz 安装，pigz -9 备�
     </button>
     <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mysqldump -u root -p --single-transaction --routines --triggers --events mydb | gzip &gt; mydb.sql.gz</span></span></code></pre></div>
   </div><p>这是逻辑备份的标准做法。</p>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

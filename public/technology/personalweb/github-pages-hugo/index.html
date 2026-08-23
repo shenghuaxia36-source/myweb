@@ -166,18 +166,30 @@ PaperMod 搜索：配置 [outputs] home = [&quot;HTML&quot;,&quot;RSS&quot;,&quo
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="GitHub Pages 和 Hugo 配置 架构图 Copygraph TDsubgraph 本地开发HUGO[Hugo 项目]TOML[hugo.toml 配置]THEME[PaperMod 主题 - git submodule]CONTENT[content/ Markdown 文章]endsubgraph GitHubREPO[GitHub Repository]ACTION[GitHub Actions - hugo.yml]PAGES[GitHub Pages 托管]endsubgraph Cloudflare DNSCNAME[CNAME: www -&gt; 用户名.github.io]DOMAIN[自定义域名 www.shenghua.au]endCONTENT --&gt; HUGOTOML --&gt; HUGOTHEME --&gt; HUGOHUGO --&gt;|git push 源码| REPOREPO --&gt;|push to main 触发| ACTIONACTION --&gt;|hugo 编译生成 public/| PAGESPAGES --&gt;|static/CNAME 绑定域名| DOMAINDOMAIN --&gt; CNAME摘要 在 GitHub Pages 上部署 Hugo 网站有两种方式：GitHub Actions 自动构建（推荐）和本地生成 public 后上传。 完整流程包括创建 Hugo 项目、配置 PaperMod 主题、创建 GitHub 仓库、配置 Actions 工作流、启用 GitHub Pages。 GitHub Actions 工作流使用 peaceiris/actions-hugo@v3 安装 Hugo，编译后通过 actions/deploy-pages@v4 部署到 Pages。 自定义域名需在 static/CNAME 中写入域名，GitHub Pages 设置中绑定，Cloudflare DNS 配置 CNAME 指向 用户名.github.io。 Hugo 常见配置包括 baseURL、菜单、中文配置（hasCJKLanguage = true）和 PaperMod 搜索功能。 技术要点 Hugo 主题以 git submodule 引入：使用 git submodule add 添加 PaperMod 主题，GitHub Actions 中需设置 submodules: recursive 确保主题被正确拉取。 GitHub Actions 工作流：触发条件为 push 到 main 分支，需要 pages: write 和 id-token: write 权限，使用 concurrency 控制部署队列。 Pages Source 设置：必须选择 “GitHub Actions” 而非 “Deploy from a branch”，否则会因仓库中没有 public 目录而导致 404。 CNAME 文件：放在 static/CNAME 中，Hugo 编译后会自动输出到 public/CNAME，GitHub Pages 据此绑定自定义域名。 Cloudflare DNS 配置：子域名用 CNAME 记录指向 用户名.github.io；根域名需配置 GitHub Pages 官方的 4 个 A 记录。 中文配置：设置 languageCode = &#34;zh-cn&#34;、defaultContentLanguage = &#34;zh-cn&#34;、hasCJKLanguage = true 确保中文正常处理。 PaperMod 搜索：配置 [outputs] home = [&#34;HTML&#34;,&#34;RSS&#34;,&#34;JSON&#34;] 启用搜索功能。 推荐目录结构：content/ 存文章，static/ 存 CNAME 和图片，themes/ 存主题，.github/workflows/ 存 CI 配置。 原文内容 如果你想在 GitHub Pages 上部署 Hugo 网站，通常有两种方式：">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-github-pages-hugo">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-github-pages-hugo">
   
 
 
@@ -239,21 +251,17 @@ PaperMod 搜索：配置 [outputs] home = [&quot;HTML&quot;,&quot;RSS&quot;,&quo
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-github-pages-hugo flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="github-pages-和-hugo-配置">GitHub Pages 和 Hugo 配置</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="github-pages-和-hugo-配置">GitHub Pages 和 Hugo 配置</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -603,14 +611,8 @@ Target: 用户名.github.io</code></pre>
   </div><blockquote>
 <p>如果你已经准备好 GitHub Repository 名称和 Cloudflare 域名，我可以直接给你生成一份适用于 GitHub Pages + Cloudflare + Hugo(PaperMod) 的完整 <code>hugo.toml</code> 和 DNS 配置。</p>
 </blockquote>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

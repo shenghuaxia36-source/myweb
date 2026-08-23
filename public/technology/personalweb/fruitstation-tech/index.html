@@ -173,18 +173,30 @@ JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间�
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="水果摊技术栈 架构图 Copygraph TDsubgraph 前端BROWSER[浏览器]VUE[Vue3 &#43; TypeScript &#43; Element Plus]SPA[单页面应用 SPA]COMPONENTS[登录/注册/商品/购物车/订单 组件]endsubgraph 后端SB[Spring Boot 3]SECURITY[Spring Security 认证/授权/加密]JWT[JWT 无状态登录]SERVICES[用户服务 / 商品服务 / 订单服务 / 邮件服务]endsubgraph 数据层MYSQL[(MySQL)]REDIS[(Redis)]RABBITMQ{{RabbitMQ}}endBROWSER --&gt;|HTTPS| VUEVUE --&gt; SPASPA --&gt; COMPONENTSVUE --&gt;|REST API| SBSB --&gt; SECURITYSECURITY --&gt; JWTSB --&gt; SERVICESSERVICES --&gt; MYSQLSERVICES --&gt; REDISSERVICES --&gt; RABBITMQ摘要 技术栈选型为 Vue3 &#43; TypeScript &#43; Element Plus（前端）和 Spring Boot 3 &#43; Spring Security &#43; JWT（后端），是国内企业级电商系统最成熟的组合之一。 Vue3 核心能力包括页面组件化、数据响应式、单页面应用（SPA）和 Composition API，适合大型项目开发。 TypeScript 提供类型检查和自动提示，在开发时即可发现错误，是企业级开发必备。 Spring Security 提供用户认证、权限管理（ROLE_ADMIN/ROLE_USER）和密码加密（BCrypt/PBKDF2/Argon2）。 JWT 实现无状态登录，服务器不保存 Session，支持集群和微服务扩展。 单台 4C8G 服务器即可支撑 100 活跃用户；采用 Nginx &#43; SpringBoot 双实例可达 100300 并发用户和 50100 QPS。 技术要点 Vue3 组件化开发：将页面拆分为 Login.vue、Register.vue、Product.vue、Cart.vue、Order.vue 等独立组件，便于管理和复用。 数据响应式：Vue3 最大特色，data 变化时页面自动刷新，无需手动更新 DOM。 Composition API：Vue3 官方推荐的 setup()、ref()、reactive()、computed()、watch() 等 API，代码逻辑集中、复用性高、维护方便。 TypeScript 类型检查：在开发时即可发现类型错误（如 price = &#34;abc&#34; 赋值给 number 类型），减少运行时 Bug。 Element Plus UI 组件库：提供登录框、表单（校验/错误提示/提交）、表格、分页等封装组件，特别适合快速开发后台管理系统、ERP、CRM、商城、OA。 Spring Boot 3 自动配置：通过 @SpringBootApplication 注解即可启动项目，自动完成数据库连接、Redis 连接、JSON 转换、日志、事务管理等配置。 Spring Security 安全框架：自动实现认证、授权、权限控制、登录校验、登录失效、防攻击；支持 BCrypt、PBKDF2、Argon2 密码加密。 JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间，前端存储在 LocalStorage，请求时通过 Authorization: Bearer Token 传递，服务器无状态、支持集群和微服务。 框架协作流程：注册（Vue→Spring Boot→SMTP→Redis 缓存验证码）→ 登录（Vue→Spring Security 认证→生成 JWT→返回 Token）→ 浏览商品（Vue→Axios→SpringBoot→MySQL）→ 下单（Vue→SpringBoot→库存校验→生成订单→写入 MySQL）。 容量评估：100 活跃用户 &#43; 5000 商品 &#43; 3000 单/天的场景，单台 4C8G 足够；采用 Nginx &#43; SpringBoot 双实例 &#43; Redis &#43; MySQL 可达 100300 并发、50100 QPS、10000&#43; 订单/天、响应时间 100ms~500ms。 原文内容 对于你这个水果商城项目（注册→邮箱验证→登录→商品浏览→下单），选择：">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-fruitstation-tech">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-fruitstation-tech">
   
 
 
@@ -246,21 +258,17 @@ JWT 无状态登录：JSON Web Token 包含用户信息、签名和过期时间�
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-fruitstation-tech flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="水果摊技术栈">水果摊技术栈</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="水果摊技术栈">水果摊技术栈</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -616,14 +624,8 @@ SpringBoot
 <p>整体可达到：100<del>300 并发用户、50</del>100 QPS、10000+ 订单/天</p>
 <p>响应时间通常控制在：100ms ~ 500ms</p>
 <p>完全满足中小型商业水果商城上线运营需求，同时为后续扩容到微服务、Kubernetes、分布式订单系统预留充足空间。</p>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

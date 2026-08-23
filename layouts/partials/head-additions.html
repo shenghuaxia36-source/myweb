@@ -1,10 +1,23 @@
-{{ $customCSS := resources.Get "css/custom.css" }}
+<style type="text/css">
+  /* 强行穿透并覆写所有级别的 Tachyons 容器 */
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
 
-{{ if $customCSS }}
-  {{ $customCSS = $customCSS | resources.Minify | resources.Fingerprint }}
-  <link
-    rel="stylesheet"
-    href="{{ $customCSS.RelPermalink }}"
-    integrity="{{ $customCSS.Data.Integrity }}"
-  >
-{{ end }}
+  /* 解决 >960px 屏幕下，正文被侧边栏挤压成 66% (w-two-thirds-l) 的问题 */
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>

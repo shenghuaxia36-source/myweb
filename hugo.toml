@@ -10,6 +10,13 @@ theme = "ananke"
 
   site_logo = ""
   description = "My Web"
+  style.mainWidth = "1600px"
+  customCSS = ["css/custom.css"]
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
 
 [menus]
 

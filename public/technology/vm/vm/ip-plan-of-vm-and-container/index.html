@@ -158,18 +158,30 @@ Web 容器访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 17
 	<meta name="twitter:title" content="Gourney Of oG-Go">
 	<meta name="twitter:description" content="虚机-容器的地址规划 架构图 Copyflowchart TDsubgraph HyperV[Hyper-V]subgraph UbuntuVM[Ubuntu VM 10.10.10.22 eth0]D0[docker0 网关 172.17.0.1/16&lt;br/&gt;默认 bridge 网络]BR[br-4d44c079d811 网关 172.18.0.1/16&lt;br/&gt;自定义网络 app-net]D0 --&gt;|veth34a5eca| CA[Container-A PostgreSQL&lt;br/&gt;172.17.0.2 端口 5432]BR --&gt;|veth61d83e0| CB[Container-B Web 应用&lt;br/&gt;172.18.0.2 端口 8000]endendPC[PC 10.10.10.100] -- https://10.10.10.22 --&gt; UbuntuVMIN((公网 110.110.110.10)) -- FortiGate VIP --&gt; PC2[10.10.10.22:443] -.-&gt; UbuntuVMsubgraph 端口映射_DNATM1[127.0.0.1:55432 → 172.17.0.2:5432&lt;br/&gt;仅本机访问]M2[10.10.10.22:443 → 172.18.0.2:8000&lt;br/&gt;全网可访问]end摘要 通过 ip addr 与 iptables -t nat 输出可还原完整网络结构：Ubuntu VM（10.10.10.22，Hyper-V 之上）运行 Docker，包含默认网络 docker0（172.17.0.1/16）与自定义网络 br-4d44c079d811（172.18.0.1/16）。 docker0 是 Docker 自动创建的默认 Bridge；br-4d44c079d811 由 docker network create app-net（或 docker compose）产生，网络 ID 前缀 4d44c079d811 即 Linux 网桥名。 veth 设备标识容器挂载位置：veth34a5eca master docker0 对应 Container A（172.17.0.2），veth61d83e0 master br-4d44c079d811 对应 Container B（172.18.0.2）。 端口映射：PostgreSQL 127.0.0.1:55432 → 172.17.0.2:5432（仅本机可访问）；Web 443 → 172.18.0.2:8000（10.10.10.22:443 可被局域网访问）。 完整访问路径（PC → 容器）：10.10.10.100 → Linux VM 10.10.10.22:443 → Docker DNAT → 172.18.0.2:8000；若 FortiGate 做公网 VIP（110.110.110.10:443 → 10.10.10.22:443），则形成 FortiGate（第一层 NAT）&#43; Docker（第二层 NAT）的双层地址转换架构。 技术要点 组件识别：eth0 10.10.10.22/24 说明 Linux VM 在 10.10.10.0/24 网络中，处于 Hyper-V → Linux VM (10.10.10.22) 结构。 默认 Docker 网络：docker0 网关 172.17.0.1/16，网段 172.17.0.0/16，未指定网络的容器默认挂载（172.17.0.2、172.17.0.3…）。 自定义网络：docker network create app-net 生成 br-4d44c079d811（172.18.0.1/16），网段 172.18.0.0/16；网桥名 br-&lt;网络ID前12位&gt;。 veth 判断容器归属：veth34a5eca@if2 master docker0 → Container A 挂 docker0；veth61d83e0@if2 master br-4d44c079d811 → Container B 挂自定义网桥。 iptables 确认端口映射：55432 → 172.17.0.2:5432 与 443 → 172.18.0.2:8000 的 DNAT 规则可反推容器 IP：Container-A=172.17.0.2、Container-B=172.18.0.2。 PostgreSQL 访问方式：绑定 127.0.0.1，只能本机 psql -h localhost -p 55432 访问；外部机器（10.10.10.22:55432）不能访问，因为有 PREROUTING 阶段对 -d 127.0.0.1 --dport 55432 的 DROP 规则。 Web 容器访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 172.18.0.2:8000，实际服务是 Container-B。 双层 NAT 架构：公网 110.110.110.10:443 →（FortiGate VIP）→ 10.10.10.22:443 →（Docker DNAT）→ 172.18.0.2:8000；第一层 NAT 在 FortiGate，第二层 NAT 在 Docker。 容器对应关系确认命令：docker ps &#43; docker inspect &lt;容器ID&gt;；或批量 docker container ls -q | xargs docker inspect --format &#39;{{.Name}} {{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}&#39; 直接得到 /postgres 172.17.0.2、/webapp 172.18.0.2。 原文内容 从这个 ip addr 和前面贴出的 iptables -t nat 输出，我基本可以还原出你的网络结构。">
 
-	
-
-
-  
-  <link
-    rel="stylesheet"
-    href="/myweb/css/custom.min.be4f0acae65710b9b4e5f4fdaa88c853e1498af505877c43a2631d839273bffe.css"
-    integrity="sha256-vk8KyuZXELm05fT9qojIU&#43;FJivUFh3xDomMdg5Jzv/4="
-  >
-
-  </head><body class="ma0 avenir bg-near-white development is-page is-page page-ip plan of vm and container">
+	<style type="text/css">
    
+  html body .mw7,
+  html body .mw8,
+  html body .mw9,
+  html body .mw7-l,
+  html body .mw8-l {
+    max-width: 1200px !important;
+  }
+
+   
+  @media screen and (min-width: 60em) {
+    html body .w-two-thirds-l {
+      width: 100% !important;
+    }
+    html body article,
+    html body main,
+    html body .nested-copy-line-height {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  }
+</style>
+  </head><body class="ma0 avenir bg-near-white development is-page is-page page-ip plan of vm and container">
   
 
 
@@ -231,21 +243,17 @@ Web 容器访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 17
 
 
 <main class="pb7" role="main">
-  
-
-  <article class="page-ip plan of vm and container flex-l mw7 center ph3 flex-wrap justify-between">
-    <header class="mt4 w-100"><aside class="instapaper_ignoref b helvetica tracked ttu">
-    <a class="link dim" href="http://localhost:1313/myweb/technology/">Technology</a>
-  </aside><div id="sharing" class="mt3 ananke-socials"></div>
-<h1 class="f1 athelas mt3 mb1"></h1>
-      
-      
-      
-
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        
+      </h1>
       
       
     </header>
-    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray pr4-l w-100-l"><h1 id="虚机-容器的地址规划">虚机-容器的地址规划</h1>
+
+    
+    <div class="nested-copy-line-height lh-copy serif f4 nested-links mid-gray w-100" style="max-width: 100% !important; margin-top: 2rem;"><h1 id="虚机-容器的地址规划">虚机-容器的地址规划</h1>
 <h2 id="架构图">架构图</h2>
 <div class="code-block">
     <button class="code-copy" type="button" hidden aria-label="Copy code to clipboard">
@@ -626,14 +634,8 @@ Web 容器访问路径：浏览器 → https://10.10.10.22 → Docker NAT → 17
     <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>/postgres 172.17.0.2
 </span></span><span style="display:flex;"><span>/webapp   172.18.0.2</span></span></code></pre></div>
   </div><p>这样就能精确确认哪个容器对应哪个IP。</p>
-<ul class="pa0">
-  
-</ul><ul class="pa0">
-  
-</ul>
-
-      
-    </div></article>
+</div>
+  </article>
 </main><footer class="bg-black bottom-0 w-100 pa3" role="contentinfo">
   <div class="flex justify-between">
   <a class="f4 fw4 hover-white white-70 dn dib-ns pv2 ph3 no-underline" href="http://localhost:1313/myweb/" >

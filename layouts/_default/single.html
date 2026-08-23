@@ -1,0 +1,28 @@
+{{ define "header" }}
+  {{ partial "page-header.html" . }}
+{{ end }}
+
+{{ define "main" }}
+  <article class="center ph3 ph5-ns" style="max-width: 1200px !important; margin: 0 auto;">
+    <header class="mt4 w-100">
+      <h1 class="f1 athelas mt3 mb1">
+        {{ .Title }}
+      </h1>
+      {{ with .Params.author }}
+        <p class="tracked">
+          <strong>{{ . }}</strong>
+        </p>
+      {{ end }}
+      {{ if not .Date.IsZero }}
+        <time class="f6 mv2 dib tracked" datetime="{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}">
+          {{ .Date | time.Format ":date_long" }}
+        </time>
+      {{ end }}
+    </header>
+
+    <!-- 解锁宽度限制：移除了原版压缩宽度的 w-two-thirds-l 和 flex 侧边栏结构 -->
+    <div class="nested-copy-line-height lh-copy {{ $.Param "post_content_classes" | default "serif" }} f4 nested-links {{ $.Param "text_color" | default "mid-gray" }} w-100" style="max-width: 100% !important; margin-top: 2rem;">
+      {{- .Content -}}
+    </div>
+  </article>
+{{ end }}
