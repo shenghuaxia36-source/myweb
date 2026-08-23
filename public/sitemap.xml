@@ -2,6 +2,8 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
+    <loc>http://localhost:1313/myweb/about/gourney/</loc>
+  </url><url>
     <loc>http://localhost:1313/myweb/life/%E5%B9%B4%E9%89%B4/</loc>
   </url><url>
     <loc>http://localhost:1313/myweb/posts/10%E4%B8%87%E4%BA%BF%E6%94%B6%E5%82%A8/</loc>

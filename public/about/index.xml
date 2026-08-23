@@ -11,5 +11,12 @@
 		
 		
 			<atom:link href="http://localhost:1313/myweb/about/index.xml" rel="self" type="application/rss+xml" />
+			<item>
+				<title></title>
+				<link>http://localhost:1313/myweb/about/gourney/</link>
+				<pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+				<guid>http://localhost:1313/myweb/about/gourney/</guid>
+				<description>&lt;p&gt;当前人类高峰&lt;/p&gt;&#xA;&lt;p&gt;迎来知命之缨&lt;/p&gt;&#xA;&lt;p&gt;回头望&lt;/p&gt;&#xA;&lt;p&gt;而立不惑&lt;/p&gt;&#xA;&lt;p&gt;扣心问自己&lt;/p&gt;&#xA;&lt;p&gt;南下两万里&lt;/p&gt;&#xA;&lt;p&gt;转换天地&lt;/p&gt;&#xA;&lt;p&gt;未来可以想象&lt;/p&gt;&#xA;&lt;p&gt;时代的狂&lt;/p&gt;&#xA;&lt;p&gt;王侯将相&lt;/p&gt;&#xA;&lt;p&gt;因果以内皆过往&lt;/p&gt;&#xA;&lt;p&gt;世界的王&lt;/p&gt;&#xA;&lt;p&gt;万物臣服物理乐章&lt;/p&gt;&#xA;&lt;p&gt;时空的方向&lt;/p&gt;&#xA;&lt;p&gt;闭眼的想象&lt;/p&gt;&#xA;&lt;p&gt;睁眼看到的猫是你的画像&lt;/p&gt;</description>
+			</item>
 	</channel>
 </rss>
